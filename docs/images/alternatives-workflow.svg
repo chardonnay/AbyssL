@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="360" viewBox="0 0 1180 360" role="img" aria-labelledby="title desc">
+  <title id="title">AbyssL Translator Alternatives Workflow</title>
+  <desc id="desc">Workflow for selected text or the full translation with an AI instruction and alternatives.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4a5568"/>
+    </marker>
+    <style>
+      .box { fill: #f8fafc; stroke: #2d3748; stroke-width: 2; rx: 8; }
+      .choice { fill: #fffaf0; stroke: #b7791f; stroke-width: 2; rx: 8; }
+      .result { fill: #f0fff4; stroke: #2f855a; stroke-width: 2; rx: 8; }
+      .text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 19px; fill: #1a202c; }
+      .small { font-size: 14px; fill: #4a5568; }
+      .line { stroke: #4a5568; stroke-width: 2.4; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect x="40" y="120" width="210" height="90" class="box"/>
+  <text x="145" y="155" text-anchor="middle" class="text">Translation</text>
+  <text x="145" y="183" text-anchor="middle" class="small">select text or leave empty</text>
+
+  <rect x="320" y="50" width="240" height="85" class="choice"/>
+  <text x="440" y="84" text-anchor="middle" class="text">Selection</text>
+  <text x="440" y="112" text-anchor="middle" class="small">rewrite selection only</text>
+
+  <rect x="320" y="205" width="240" height="85" class="choice"/>
+  <text x="440" y="239" text-anchor="middle" class="text">No Selection</text>
+  <text x="440" y="267" text-anchor="middle" class="small">use full translation</text>
+
+  <rect x="640" y="120" width="230" height="90" class="box"/>
+  <text x="755" y="154" text-anchor="middle" class="text">AI Instruction</text>
+  <text x="755" y="182" text-anchor="middle" class="small">for example polished, concise</text>
+
+  <rect x="940" y="120" width="200" height="90" class="result"/>
+  <text x="1040" y="154" text-anchor="middle" class="text">Alternatives</text>
+  <text x="1040" y="182" text-anchor="middle" class="small">arrows, reload, apply</text>
+
+  <path d="M 250 150 C 285 110, 290 92, 320 92" class="line"/>
+  <path d="M 250 180 C 285 220, 290 247, 320 247" class="line"/>
+  <path d="M 560 92 C 600 110, 605 145, 640 155" class="line"/>
+  <path d="M 560 247 C 605 240, 610 185, 640 175" class="line"/>
+  <path d="M 870 165 L 940 165" class="line"/>
+</svg>

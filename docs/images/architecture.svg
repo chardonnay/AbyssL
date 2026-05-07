@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="540" viewBox="0 0 1180 540" role="img" aria-labelledby="title desc">
+  <title id="title">AbyssL Translator Architecture</title>
+  <desc id="desc">App layers with SwiftUI views, ViewModel, LLM services, document service, settings, and macOS integration.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4a5568"/>
+    </marker>
+    <style>
+      .layer { fill: #f7fafc; stroke: #2d3748; stroke-width: 2; rx: 10; }
+      .ui { fill: #ebf8ff; stroke: #2b6cb0; stroke-width: 2; rx: 8; }
+      .state { fill: #f0fff4; stroke: #2f855a; stroke-width: 2; rx: 8; }
+      .service { fill: #eef2ff; stroke: #4c51bf; stroke-width: 2; rx: 8; }
+      .system { fill: #fff5f5; stroke: #c53030; stroke-width: 2; rx: 8; }
+      .text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 19px; fill: #1a202c; }
+      .small { font-size: 14px; fill: #4a5568; }
+      .line { stroke: #4a5568; stroke-width: 2.3; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect x="30" y="30" width="1120" height="90" class="layer"/>
+  <text x="55" y="65" class="text">SwiftUI UI</text>
+  <rect x="180" y="48" width="195" height="52" class="ui"/>
+  <text x="277" y="80" text-anchor="middle" class="small">MainWindowView</text>
+  <rect x="410" y="48" width="190" height="52" class="ui"/>
+  <text x="505" y="80" text-anchor="middle" class="small">SettingsView</text>
+  <rect x="635" y="48" width="235" height="52" class="ui"/>
+  <text x="752" y="80" text-anchor="middle" class="small">TextEditor Components</text>
+  <rect x="905" y="48" width="185" height="52" class="ui"/>
+  <text x="997" y="80" text-anchor="middle" class="small">Document View</text>
+
+  <rect x="30" y="155" width="1120" height="95" class="layer"/>
+  <text x="55" y="190" class="text">State and Persistence</text>
+  <rect x="220" y="176" width="285" height="52" class="state"/>
+  <text x="362" y="208" text-anchor="middle" class="small">TranslationViewModel</text>
+  <rect x="610" y="176" width="285" height="52" class="state"/>
+  <text x="752" y="208" text-anchor="middle" class="small">AppSettingsStore / UserDefaults</text>
+
+  <rect x="30" y="285" width="1120" height="95" class="layer"/>
+  <text x="55" y="320" class="text">Services</text>
+  <rect x="205" y="306" width="220" height="52" class="service"/>
+  <text x="315" y="338" text-anchor="middle" class="small">OpenAIService</text>
+  <rect x="485" y="306" width="220" height="52" class="service"/>
+  <text x="595" y="338" text-anchor="middle" class="small">LocalLLMService</text>
+  <rect x="765" y="306" width="285" height="52" class="service"/>
+  <text x="907" y="338" text-anchor="middle" class="small">DocumentProcessingService</text>
+
+  <rect x="30" y="415" width="1120" height="95" class="layer"/>
+  <text x="55" y="450" class="text">macOS and Network</text>
+  <rect x="180" y="436" width="210" height="52" class="system"/>
+  <text x="285" y="468" text-anchor="middle" class="small">HotkeyManager</text>
+  <rect x="450" y="436" width="210" height="52" class="system"/>
+  <text x="555" y="468" text-anchor="middle" class="small">PasteboardHelper</text>
+  <rect x="720" y="436" width="280" height="52" class="system"/>
+  <text x="860" y="468" text-anchor="middle" class="small">OpenAI-compatible endpoints</text>
+
+  <path d="M 277 100 L 350 176" class="line"/>
+  <path d="M 505 100 L 715 176" class="line"/>
+  <path d="M 997 100 L 430 176" class="line"/>
+  <path d="M 362 228 L 315 306" class="line"/>
+  <path d="M 362 228 C 460 270, 510 270, 595 306" class="line"/>
+  <path d="M 505 228 C 640 270, 780 270, 907 306" class="line"/>
+  <path d="M 752 228 L 752 306" class="line"/>
+  <path d="M 285 436 C 260 355, 300 255, 350 228" class="line"/>
+  <path d="M 555 436 C 530 360, 460 270, 390 228" class="line"/>
+  <path d="M 425 332 L 720 462" class="line"/>
+  <path d="M 705 332 L 820 436" class="line"/>
+  <path d="M 907 358 L 860 436" class="line"/>
+</svg>

@@ -1,0 +1,217 @@
+"app.title" = "AbyssL Translator";
+
+"mode.translator" = "Translator";
+"mode.correction" = "Spelling Correction";
+"mode.document" = "Document Translate/Correct";
+
+"picker.model" = "Model";
+"picker.provider" = "Provider";
+"picker.language" = "Language";
+
+"toggle.reasoning" = "Reasoning";
+"toggle.reasoning.help" = "Allows deeper deliberation in the prompt (still JSON-only output).";
+
+"settings.open" = "Settings";
+
+"pane.source" = "Source";
+"pane.target" = "Translation";
+
+"style.register" = "Register";
+"style.complexity" = "Complexity";
+"spelling.mode" = "Spelling";
+
+"style.register.neutral" = "Neutral";
+"style.register.formal" = "Formal";
+"style.register.informal" = "Informal";
+
+"style.complexity.neutral" = "Neutral";
+"style.complexity.technical" = "Technical";
+"style.complexity.plain" = "Plain language";
+
+"spelling.preserve" = "Preserve (only if needed)";
+"spelling.fixSource" = "Fix source spelling";
+"spelling.fixTarget" = "Fix target spelling";
+
+"synonyms.title" = "Alternatives";
+"synonyms.insertHelp" = "Apply in the translation field";
+"synonyms.empty" = "No alternatives returned for this translation.";
+"alternatives.previous" = "Show previous suggestion";
+"alternatives.next" = "Show next suggestion";
+"alternatives.reload" = "Generate new suggestions";
+"alternatives.instruction.placeholder" = "Instruction for selected text or the full translation";
+"alternatives.instruction.submit" = "Send instruction to AI";
+
+"action.translateNow" = "Translate";
+"action.correctWriting" = "Correct";
+"action.correctWriting.help" = "Check text for spelling and grammar";
+"action.rewrite" = "Rewrite";
+"action.rewrite.help" = "Rewrite text with the selected style preset";
+"action.copyCorrection" = "Copy corrected text";
+"action.copyCorrection.help" = "Copy text to the clipboard";
+"action.clearCorrection" = "Clear";
+"action.clearCorrection.help" = "Clear correction text";
+"action.suggestAlternatives" = "AI alternatives";
+"action.suggestAlternatives.help" = "Show AI alternatives for the selected text";
+"action.copyTranslation" = "Copy translation";
+"action.copyTranslation.help" = "Copy translation to clipboard";
+"action.clearSource" = "Clear";
+"action.clearSource.help" = "Clear source and translation content";
+
+"writing.style.preset" = "Style";
+"writing.style.standard" = "Natural";
+"writing.style.formal" = "Formal";
+"writing.style.concise" = "Concise";
+"writing.instruction.placeholder" = "Direct instruction to the AI, for example \"Make the text sound like it is from the 17th century\"";
+"writing.correction.reason.default" = "Correction";
+"writing.correction.restoreOriginal" = "Restore original";
+
+"settings.tab.connection" = "Connection";
+"settings.tab.defaults" = "Defaults";
+
+"settings.section.openai" = "OpenAI";
+"settings.section.provider" = "AI Provider";
+"settings.apiKey" = "API key";
+"settings.apiKey.help" = "Stored locally in UserDefaults. Prefer a restricted key with only required scopes.";
+
+"settings.section.endpoint" = "Endpoint";
+"settings.host" = "Host";
+"settings.port" = "Port";
+"settings.https" = "Use HTTPS";
+"settings.endpoint.help" = "Default is api.openai.com on port 443. For local gateways, set host/port and disable HTTPS if needed.";
+
+"settings.section.models" = "Models";
+"settings.autoTranslate" = "Translate automatically while typing";
+"settings.alternativeSuggestionCount" = "AI alternatives: %d";
+"settings.correctionAlternativeCount" = "Correction alternatives: %d";
+"settings.reasoningOn" = "Reasoning value when ON";
+"settings.reasoningOff" = "Reasoning value when OFF";
+"settings.reasoning.refresh" = "Refresh reasoning options";
+"settings.reasoning.refresh.success" = "Reasoning options updated.";
+"settings.reasoning.unavailable" = "The local model does not expose reasoning options.";
+"settings.reasoning.option.none" = "None";
+"settings.reasoning.option.off" = "Off";
+"settings.reasoning.option.on" = "On";
+"settings.reasoning.option.low" = "Low";
+"settings.reasoning.option.medium" = "Medium";
+"settings.reasoning.option.high" = "High";
+"settings.section.languages" = "Languages";
+"settings.section.style" = "Style";
+"settings.section.display" = "Display";
+"settings.editorFontSize" = "Font size: %.0f pt";
+"settings.section.captureShortcut" = "Capture text from another app";
+"settings.captureShortcut.modifier" = "Modifier";
+"settings.captureShortcut.key" = "Key";
+"settings.captureShortcut.current" = "Current shortcut: %@";
+"settings.captureShortcut.help" = "Select text in another app and press the shortcut. The default is Ctrl+C+C. macOS must allow Accessibility/Input Monitoring for automatic copying.";
+"settings.captureShortcut.modifier.control" = "Control";
+"settings.captureShortcut.modifier.option" = "Option";
+"settings.captureShortcut.modifier.command" = "Command";
+"settings.captureShortcut.modifier.shift" = "Shift";
+"settings.section.localLLM" = "Local LLM";
+"settings.llmProfile" = "LLM profile";
+"settings.llmProfile.name" = "Profile name";
+"settings.llmProfile.add" = "Add profile";
+"settings.llmProfile.delete" = "Delete profile";
+"settings.local.host" = "Local host";
+"settings.local.port" = "Local port";
+"settings.local.https" = "Use HTTPS for local endpoint";
+"settings.local.model" = "Local model";
+"settings.local.apiKey" = "Local API key (optional)";
+"settings.local.timeoutSeconds" = "Local request timeout (seconds)";
+"settings.local.timeout.help" = "0 disables the app timeout for local LLM requests.";
+"settings.local.help" = "Use an OpenAI-compatible local endpoint (for example LM Studio) with /v1 endpoints.";
+"settings.local.models.available" = "Available LLMs";
+"settings.testConnection" = "Test connection";
+"settings.testConnection.success" = "Connection successful.";
+
+"language.automatic" = "Detect language";
+"language.enUS" = "English (US)";
+"language.enGB" = "English (UK)";
+"language.de" = "German";
+"language.fr" = "French";
+"language.es" = "Spanish";
+"language.it" = "Italian";
+"language.pt" = "Portuguese";
+"language.nl" = "Dutch";
+"language.pl" = "Polish";
+"language.ru" = "Russian";
+"language.ja" = "Japanese";
+"language.ko" = "Korean";
+"language.zhHans" = "Chinese (Simplified)";
+"language.zhHant" = "Chinese (Traditional)";
+
+"model.gpt4o" = "GPT-4o";
+"model.gpt4oMini" = "GPT-4o mini";
+"model.gpt35Turbo" = "GPT-3.5 Turbo";
+"provider.openai" = "OpenAI";
+"provider.local" = "Local LLM";
+"local.model.placeholder" = "Local model (for example llama3.1)";
+
+"error.emptyHost" = "Server host is empty.";
+"error.badURL" = "Could not build a valid endpoint URL.";
+"error.emptyLocalModel" = "Local model name is empty.";
+"error.localModelNotFound" = "No LM Studio metadata found for local model \"%@\".";
+"error.missingAPIKey" = "API key is missing. Add it in Settings.";
+"error.invalidResponse" = "Unexpected response from the server.";
+"error.httpStatus" = "HTTP error %d.";
+"error.decodingFailed" = "Could not decode the response: %@.";
+
+"document.drop.title" = "Documents";
+"document.drop.message" = "Drop files or folders here";
+"document.drop.detail" = "Supported files are processed recursively; unsupported files are reported.";
+"document.drop.emptyList" = "No documents selected yet.";
+"document.drop.empty" = "No files found.";
+"document.drop.summary" = "%d items added, %d currently supported.";
+"document.export.title" = "Export File";
+"document.export.format" = "Format";
+"document.output.none" = "No output directory selected.";
+"document.instruction.placeholder" = "Optional AI instruction for these documents";
+"document.operation.correct" = "Correct";
+"document.operation.translate" = "Translate";
+"document.export.images" = "Export AsciiDoc images as ZIP";
+"document.naming.title" = "Customize names";
+"document.naming.customize" = "Customize names";
+"document.naming.timestamp" = "Append date-time";
+"document.naming.language" = "Append target language";
+"document.naming.suffix" = "Custom filename suffix";
+"document.action.chooseFiles" = "Choose file/folder";
+"document.action.chooseOutput" = "Choose output folder";
+"document.action.clear" = "Clear";
+"document.action.start" = "Process documents";
+"document.action.cancel" = "Cancel";
+"document.jobs.summary" = "%d of %d files supported";
+"document.progress.counts" = "Done: %d/%d, remaining: %d";
+"document.progress.current" = "Current: %@";
+"document.progress.elapsed" = "Elapsed: %@";
+"document.result.success" = "Export successful.";
+"document.result.summary" = "%d of %d files processed.";
+"document.result.cancelled" = "Document processing cancelled.";
+"document.format.pdf" = "PDF";
+"document.format.docx" = "Word DOCX";
+"document.format.odt" = "OpenDocument ODT";
+"document.format.markdown" = "Markdown";
+"document.format.html" = "HTML";
+"document.format.asciidoc" = "AsciiDoc";
+"document.format.plainText" = "Plain text";
+"document.format.rtf" = "RTF";
+"document.format.pages" = "Apple Pages";
+"document.format.numbers" = "Apple Numbers";
+"document.error.unsupported" = "This file format is not supported.";
+"document.error.unzipUnavailable" = "DOCX/XLSX requires /usr/bin/unzip, which is not available on this system.";
+"document.error.odtUnavailable" = "ODT requires LibreOffice/soffice; no safe local converter was found.";
+"document.error.pagesUnavailable" = "Pages is not offered because no safe local export converter is available.";
+"document.error.numbersUnavailable" = "Numbers is not offered because no safe local export converter is available.";
+"document.error.exportUnavailable" = "This export format is currently unavailable.";
+"document.error.noOutputDirectory" = "Choose an output directory.";
+"document.error.noOperation" = "Choose Translate, Correct, or both.";
+"document.error.pdfReadFailed" = "Could not read the PDF.";
+"document.error.scannedPDF" = "The PDF contains no extractable text. OCR is not included in this version.";
+"document.error.emptyDocument" = "No processable text was found in the document.";
+"document.error.odtConvertFailed" = "ODT conversion failed.";
+"document.error.xlsxReadFailed" = "Could not read the XLSX file.";
+"document.error.encodingFailed" = "Could not read text encoding.";
+"document.error.pdfWriteFailed" = "Could not write the PDF.";
+"document.error.processFailed" = "External process failed.";
+
+"menu.translation" = "Translation";
+"menu.translateNow" = "Translate Now";

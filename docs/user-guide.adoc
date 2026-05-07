@@ -1,0 +1,654 @@
+= AbyssL Translator - User Guide
+:toc:
+:toclevels: 3
+:sectanchors:
+:icons: font
+:imagesdir: images
+
+== Purpose
+
+AbyssL Translator is a macOS tool for translation, spelling correction, rewriting, and document processing with local or remote LLMs.
+It is designed for fast work with text and files:
+
+* Enter text in `Source` or capture selected text from another app with the global shortcut
+* Read, edit, and copy the result in `Translation`
+* Rewrite selected translation text with AI alternatives
+* Correct and rewrite longer text in `Spelling Correction` mode
+* Translate or correct documents through a drop zone, file/folder picker, and batch processing
+* Manage multiple local LLM profiles
+* Use reasoning options from LM Studio metadata when the local server provides them
+
+== Main Window
+
+image::translation-flow.svg[Translation flow, width=900]
+
+The main window has a mode picker at the top:
+
+* `Translator`
+* `Spelling Correction`
+* `Document Translate/Correct`
+
+In `Translator` mode, the window has these areas:
+
+[cols="1,3", options="header"]
+|===
+| Area | Purpose
+
+| Header
+| Provider, model or LLM profile, reasoning toggle, and `Settings`.
+
+| Source
+| Source text editor. It receives focus when the app starts.
+
+| Translation
+| Target text. The text can be edited, selected, and copied to the clipboard.
+
+| Alternatives
+| AI suggestions. Arrow buttons switch suggestions, and reload generates new suggestions.
+
+| Status
+| Shows request errors.
+|===
+
+=== Source
+
+Use `Source` for the input text.
+On app startup it becomes active automatically, so you can type immediately.
+
+Common actions:
+
+* Enter text. If automatic translation is enabled, the app translates after a short debounce.
+* Choose the source language: `Detect language` or a fixed source language.
+* Clear the text with the `xmark.circle` button; this clears Source, Translation, and Alternatives.
+
+=== Translation
+
+`Translation` shows the current result and remains editable.
+
+Common actions:
+
+* Choose the target language.
+* Select text and use `AI alternatives`.
+* Use the copy button to copy the full translation to the clipboard.
+
+== Translating Text
+
+=== Automatic Translation
+
+When automatic translation is enabled, the app starts a translation after input changes in `Source`.
+Input is debounced so a request is not sent for every single character.
+
+=== Manual Translation
+
+Start a manual translation with the `Translate` button or `Cmd+Return`.
+
+=== Global Capture Shortcut
+
+The app watches a configurable pattern made from a modifier plus a key pressed twice within a short time window.
+The default is `Control+C+C`.
+When text is selected in another app:
+
+. Select text.
+. Press the configured shortcut twice quickly, for example `Control+C+C`.
+. The app waits until the modifier is released.
+. The app simulates `Cmd+C` in the source app, waits for a clipboard change, copies the text into `Source`, and starts translation.
+. AbyssL Translator is activated.
+
+[NOTE]
+====
+The global shortcut and simulated copy require macOS Accessibility permission in practice.
+If the shortcut does not work, check `System Settings -> Privacy & Security -> Accessibility` and allow AbyssL Translator.
+Depending on the macOS version, `Input Monitoring` can also be relevant.
+Restart the app after changing these permissions.
+====
+
+=== Change the Shortcut
+
+Configure the shortcut in `Settings -> Defaults -> Capture text from another app`.
+The settings are:
+
+* Modifier: `Control`, `Option`, `Command`, or `Shift`
+* Key: one alphanumeric character
+
+The app interprets the setting as `Modifier+Key+Key`.
+For example, modifier `Option` and key `C` becomes `Option+C+C`.
+
+== AI Alternatives and Direct Instructions
+
+image::alternatives-workflow.svg[Alternatives workflow, width=900]
+
+=== Alternatives for Selected Text
+
+. Select a word or sentence in `Translation`.
+. Click `AI alternatives`.
+. The app requests the configured number of suggestions.
+. Use the arrow buttons in `Alternatives` to switch suggestions.
+. Click a suggestion to apply it in place of the selection.
+
+=== Alternatives with a Direct Instruction
+
+The Alternatives area includes an input field for a direct AI instruction.
+Example:
+
+[source,text]
+----
+make it more polished and remove filler words
+----
+
+Behavior:
+
+* If text is selected in `Translation`, only that selection is rewritten.
+* If nothing is selected, the whole current translation is used as the base text.
+* The number of suggestions comes from `Settings -> Defaults -> AI alternatives`.
+* Reload repeats the last applicable alternatives request.
+
+=== Apply a Suggestion
+
+Click the visible suggestion to apply it:
+
+* as a replacement for the current selection
+* as a replacement for the whole `Translation` text when no selection is active
+
+== Spelling Correction and Rewriting
+
+`Spelling Correction` mode is intended for longer text that should be corrected or stylistically rewritten.
+
+=== Correct Text
+
+. Select `Spelling Correction` in the mode picker.
+. Paste or type text into the large editor.
+. Optionally enter a direct AI instruction.
+. Start `Correct`.
+
+The app marks corrected ranges in the text.
+Hovering over a marked range shows a tooltip with the reason for the change.
+Clicking a marked range shows alternatives and allows restoring the original.
+
+The number of correction alternatives is configured in `Settings -> Defaults -> Correction alternatives`.
+The minimum value is 3.
+
+=== Rewrite Text
+
+The rewrite button uses the selected style preset and optional direct AI instruction.
+The available style presets are:
+
+* Natural
+* Formal
+* Concise
+
+Example direct instruction:
+
+[source,text]
+----
+make the text sound like it is from the 17th century
+----
+
+=== Copy Corrected Text
+
+The copy button in `Spelling Correction` mode writes the current corrected text to the clipboard.
+
+== Translating and Correcting Documents
+
+`Document Translate/Correct` processes files or folders.
+Depending on the selected options, it corrects, translates, or does both.
+When both actions are enabled, correction runs first and translation runs afterward.
+
+=== Add Files
+
+You can add documents in these ways:
+
+* Drag files from Finder into the drop zone
+* Drop multiple files at once
+* Drop a folder; supported files are collected recursively
+* Use the file/folder picker button
+
+Unsupported files are shown with a concrete reason.
+
+=== Options
+
+Document mode supports:
+
+* Output directory
+* Export format
+* Target language
+* Optional AI instruction
+* `Correct`
+* `Translate`
+* Filename customization with timestamp, target language, or custom suffix
+
+Filename conflicts are numbered automatically; existing files are not overwritten.
+
+=== Input Formats
+
+Supported inputs in the current code path:
+
+* TXT
+* Markdown
+* AsciiDoc
+* HTML
+* RTF
+* PDF
+* CSV
+* TSV
+* DOCX, when `/usr/bin/unzip` is available
+* XLSX, when `/usr/bin/unzip` is available
+* ODT, when LibreOffice `soffice` is found
+
+Pages and Numbers are not treated as safely available input formats.
+
+=== Export Formats
+
+Currently offered export formats:
+
+* PDF
+* DOCX
+* ODT, when LibreOffice `soffice` is found
+* Markdown `.md`
+* HTML
+* AsciiDoc `.adoc`
+* Plain text `.txt`
+* RTF
+
+AsciiDoc can optionally be exported as a ZIP with image files when the internal document model contains images.
+
+=== PDF Behavior
+
+PDF files are extracted as text and exported as reflowed documents.
+This is not an overlay of the original PDF.
+Scanned PDFs without extractable text are reported as unsupported because OCR is not included.
+Embedded PDF images are not reliably extracted in the current implementation.
+
+=== Progress
+
+During document processing, the app shows:
+
+* completed file count
+* current file
+* remaining file count
+* elapsed time
+
+== Settings
+
+=== Open Settings
+
+Open Settings with the gear button or `Cmd+,`.
+The Settings window has two tabs:
+
+* `Connection`
+* `Defaults`
+
+=== Connection: Provider
+
+`AI Provider` selects the active provider:
+
+[cols="1,3", options="header"]
+|===
+| Provider | Description
+
+| OpenAI
+| Uses OpenAI-compatible `/v1` endpoints with an API key.
+
+| Local LLM
+| Uses a local OpenAI-compatible server. The app can also read LM Studio metadata from `/api/v1/models`.
+|===
+
+=== Connection: OpenAI
+
+Fields:
+
+* API key
+* Host
+* Port
+* HTTPS
+
+The API key is stored locally in `UserDefaults`.
+For production use, prefer the most restricted key that still supports the required requests.
+
+=== Connection: Local LLM and Profiles
+
+LLM profiles store local server and model data.
+Each profile contains:
+
+* Profile name
+* Host
+* Port
+* HTTPS setting
+* Model name
+* Optional local API key
+
+Actions:
+
+* Select a profile from the picker
+* Edit the profile name
+* Add a profile
+* Delete a profile when more than one profile exists
+
+The selected profile is also available in the main window under the provider controls.
+Switching profiles applies host, port, HTTPS, model, and API key.
+
+=== Test Connection and List Local Models
+
+For `Local LLM`, `Test connection` performs these checks:
+
+. Check the configured local server.
+. Load available LLMs from LM Studio metadata when the server provides it.
+. If no local model name is set, use a loaded model automatically when there is exactly one unambiguous candidate.
+
+Loaded models are marked in the list with a green dot.
+
+[NOTE]
+====
+The local model list is based on `/api/v1/models`.
+If a local server does not provide this LM Studio metadata path, normal `/v1` compatibility can still work, but the model list and reasoning options can be unavailable.
+====
+
+=== Reasoning Options
+
+The app distinguishes between:
+
+* `Reasoning value when ON`
+* `Reasoning value when OFF`
+
+For local LM Studio metadata, `Refresh reasoning options` can load the available values automatically.
+If no reasoning metadata is present, the app treats the local model as a model without reasoning options.
+
+The local request sends no `reasoning_effort` when reasoning is disabled or the selected value is `none` or `off`.
+
+=== Local Request Timeout
+
+The local request timeout is configured in seconds.
+The default value is 600 seconds.
+The value `0` disables the app timeout for local LLM requests.
+
+=== Defaults
+
+The `Defaults` tab stores default values:
+
+* OpenAI model
+* Reasoning toggle
+* Automatic translation while typing
+* Number of AI alternatives, currently limited to 1 through 8
+* Number of correction alternatives, currently limited to 3 through 8
+* Font size for Source, Translation, and Alternatives
+* Shortcut for capturing text from other apps
+* Default source language
+* Default target language
+* Register
+* Complexity
+* Spelling mode
+
+== Style Options
+
+[cols="1,1,3", options="header"]
+|===
+| Setting | Value | Effect
+
+| Register
+| Neutral
+| Neutral wording.
+
+| Register
+| Formal
+| Formal style for professional communication.
+
+| Register
+| Informal
+| Relaxed style for everyday language.
+
+| Complexity
+| Neutral
+| No targeted simplification or technical wording.
+
+| Complexity
+| Technical
+| More precise and domain-oriented terminology.
+
+| Complexity
+| Plain language
+| Simpler sentences and less jargon.
+
+| Spelling
+| Preserve
+| Fix spelling only when needed for meaning.
+
+| Spelling
+| Fix source spelling
+| Obvious source text errors are considered for the translation.
+
+| Spelling
+| Fix target spelling
+| The target text should use correct orthography.
+|===
+
+== Supported Languages
+
+The app currently offers these language options:
+
+* Detect language
+* English (US)
+* English (UK)
+* German
+* French
+* Spanish
+* Italian
+* Portuguese
+* Dutch
+* Polish
+* Russian
+* Japanese
+* Korean
+* Chinese (Simplified)
+* Chinese (Traditional)
+
+== Window Behavior
+
+The main-window geometry is saved.
+If the user moves or resizes the main window, that geometry is reused on later launches.
+
+The Settings window has a fixed size.
+
+== Data Storage
+
+Configuration is stored locally in `UserDefaults`.
+Stored values include:
+
+* Provider
+* OpenAI connection data
+* Local LLM profiles
+* Local request timeout
+* Capture shortcut
+* Languages
+* Style options
+* Reasoning values
+* Automatic translation
+* Number of AI alternatives
+
+The app does not use its own database.
+
+== Architecture
+
+image::architecture.svg[Architecture overview, width=900]
+
+[cols="1,3", options="header"]
+|===
+| Component | Responsibility
+
+| `MainWindowView`
+| Main window, provider controls, and switching between Translator, Spelling Correction, and Document processing modes.
+
+| `SettingsView`
+| Settings, LLM profiles, connection test, and reasoning refresh.
+
+| `TranslationViewModel`
+| UI state, debouncing, translation, correction, alternatives, and document tasks.
+
+| `DocumentProcessingService`
+| Collects, loads, processes, and exports documents.
+
+| `OpenAIService`
+| OpenAI-compatible client for remote chat completions.
+
+| `LocalLLMService`
+| OpenAI-compatible client for local LLMs plus LM Studio metadata.
+
+| `AppSettingsStore`
+| Persists settings in `UserDefaults`.
+
+| `HotkeyManager`
+| Detects the configured global shortcut pattern.
+
+| `PasteboardHelper`
+| Reads and writes the macOS clipboard.
+|===
+
+== Build, Run, and Validate
+
+=== Debug Build
+
+[source,bash]
+----
+swift build
+swift run AbyssLTranslator
+----
+
+=== Release Build
+
+[source,bash]
+----
+swift build -c release
+.build/release/AbyssLTranslator
+----
+
+When running the SwiftPM binary directly, keep the resource bundle in the release directory:
+
+* `.build/arm64-apple-macosx/release/AbyssLTranslator`
+* `.build/arm64-apple-macosx/release/AbyssLTranslator_AbyssLTranslator.bundle`
+
+=== Local App Bundle / DMG
+
+A simple local app bundle can be created with system tools.
+The SwiftPM resource bundle must be placed directly under `AbyssLTranslator.app/` because the generated resource accessor looks there.
+
+[source,bash]
+----
+swift build -c release
+
+rm -rf dist
+mkdir -p dist/AbyssLTranslator.app/Contents/MacOS
+mkdir -p dist/AbyssLTranslator.app/Contents/Resources
+
+cp .build/arm64-apple-macosx/release/AbyssLTranslator \
+  dist/AbyssLTranslator.app/Contents/MacOS/
+
+cp -R .build/arm64-apple-macosx/release/AbyssLTranslator_AbyssLTranslator.bundle \
+  dist/AbyssLTranslator.app/
+----
+
+Then add a suitable `Info.plist` at `dist/AbyssLTranslator.app/Contents/Info.plist`, sign locally, and create the DMG:
+
+[source,bash]
+----
+chmod +x dist/AbyssLTranslator.app/Contents/MacOS/AbyssLTranslator
+codesign --force --deep --sign - dist/AbyssLTranslator.app
+
+mkdir -p dist/dmg-root
+cp -R dist/AbyssLTranslator.app dist/dmg-root/
+ln -s /Applications dist/dmg-root/Applications
+
+hdiutil create \
+  -volname "AbyssL Translator" \
+  -srcfolder dist/dmg-root \
+  -ov \
+  -format UDZO \
+  dist/AbyssLTranslator.dmg
+----
+
+=== Validate After Changes
+
+[source,bash]
+----
+swift build
+----
+
+If tests are added later, run `swift test`.
+This package currently has no `Tests` target.
+
+== Troubleshooting
+
+=== First Character Is Missing in Source
+
+Check:
+
+. Restart the app.
+. Type directly without clicking into `Source`.
+. The first character must appear in `Source`.
+
+If this does not happen, focus is not set correctly on the source editor.
+
+=== No Translation
+
+Check:
+
+. Is the correct provider selected?
+. Is an API key present when the provider is `OpenAI`?
+. Are host, port, and HTTPS correct?
+. For `Local LLM`: is a model entered, or is exactly one loaded model available?
+. Is the local request timeout high enough? For very slow local models, test with `0`.
+. Run `Test connection` in Settings.
+. Read the error in the lower status area.
+
+=== Local Models Are Not Listed
+
+Check:
+
+. Is the local server running?
+. Are host and port correct?
+. Does the server provide `/api/v1/models`?
+. For servers without the LM Studio metadata path, this list can stay empty.
+
+=== Reasoning Refresh Shows No Options
+
+Possible causes:
+
+* The local model does not expose reasoning metadata.
+* The entered model name does not match the LM Studio metadata.
+* The local server does not provide `/api/v1/models`.
+
+=== Global Shortcut Does Not Work
+
+Check:
+
+. Enable Accessibility permission for the app in macOS.
+. Select text in the source app.
+. Press the configured shortcut, default `Control+C+C`.
+. If nothing happens, restart the app and try again.
+
+=== Document PDF Is Empty or Looks Wrong
+
+Check:
+
+. Does the PDF contain extractable text, or is it a scan?
+. Test export format `Plain text` to isolate text extraction.
+. OCR is not implemented for scanned PDFs in the current version.
+. PDF export is a reflow export and does not use the original layout as a background.
+
+=== ODT Is Not Offered
+
+ODT requires LibreOffice `soffice`.
+The app looks in these locations:
+
+* `/Applications/LibreOffice.app/Contents/MacOS/soffice`
+* `/usr/local/bin/soffice`
+* `/opt/homebrew/bin/soffice`
+
+== Render Documentation
+
+If `asciidoctor` is installed:
+
+[source,bash]
+----
+asciidoctor README.adoc
+asciidoctor docs/user-guide.adoc
+----
+
+The diagrams are regular SVG files in `docs/images/`.

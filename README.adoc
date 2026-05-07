@@ -1,0 +1,188 @@
+= AbyssL Translator
+:toc:
+:toclevels: 2
+:sectanchors:
+:icons: font
+:imagesdir: docs/images
+
+AbyssL Translator is a macOS app for translation, spelling correction, rewriting, and document processing through an OpenAI-compatible chat-completions endpoint.
+The app has three workspace modes:
+
+* `Translator` for direct source-to-translation work
+* `Spelling Correction` for correction, style presets, direct AI instructions, and alternatives
+* `Document Translate/Correct` for batch processing files and folders
+
+It also supports AI alternatives, local LLM profiles, reasoning options from LM Studio metadata, local request timeouts, and a configurable global capture shortcut.
+
+image::translation-flow.svg[Translation flow, width=900]
+
+== Status
+
+This documentation describes the current Swift package.
+No external endpoints are assumed beyond the OpenAI-compatible paths used by the app:
+
+* `/v1/chat/completions` for translation, correction, rewriting, and alternatives
+* `/v1/models` for connection tests
+* `/api/v1/models` for LM Studio metadata, local model lists, and reasoning options
+
+== Requirements
+
+* macOS 14 or newer
+* Swift 5.9 compatible toolchain
+* Optional: an OpenAI API key or a local OpenAI-compatible server such as LM Studio
+* For global text capture from other apps: macOS Accessibility permission, and possibly Input Monitoring
+* For DOCX/XLSX input: `/usr/bin/unzip`
+* For AsciiDoc ZIP export: `/usr/bin/zip`
+* Optional for ODT input/export: LibreOffice `soffice`
+
+== Build and Run
+
+[source,bash]
+----
+swift build
+swift run AbyssLTranslator
+----
+
+Release build:
+
+[source,bash]
+----
+swift build -c release
+.build/release/AbyssLTranslator
+----
+
+When distributing the SwiftPM release build directly, keep the resource bundle next to the binary:
+
+* `.build/arm64-apple-macosx/release/AbyssLTranslator`
+* `.build/arm64-apple-macosx/release/AbyssLTranslator_AbyssLTranslator.bundle`
+
+== Quick Start
+
+. Start the app.
+. Open `Settings`.
+. In `Connection`, choose `OpenAI` or `Local LLM`.
+. Enter the API key, host, port, HTTPS setting, and model for the selected provider.
+. For a local LLM, optionally run `Test connection` to list available models.
+. In the main window, choose `Translator`, `Spelling Correction`, or `Document Translate/Correct`.
+. In `Translator` mode, enter text in `Source`; the source editor receives focus on startup.
+. Read or edit the result in `Translation`.
+. Optionally select text in `Translation` and generate AI alternatives.
+
+== Main Features
+
+* Automatic translation while typing when `Autotranslation` is enabled
+* Manual translation with `Cmd+Return`
+* Global capture shortcut: default `Control+C+C` on selected text in another app, configurable in Settings
+* Spelling correction with marked changes, tooltips, alternatives, and restoring the original text
+* Rewriting with a button, direct AI instructions, and three style presets
+* Document processing with drop zone, file/folder picker, output folder, export formats, optional AI instruction, and progress display
+* LLM profiles for different local models and servers
+* Reasoning options from LM Studio metadata
+* Local request timeout; `0` disables the app timeout for local LLM requests
+* AI alternatives for selected text or the whole translation
+* Persisted editor font size for Source, Translation, and Alternatives
+* Copy button for the finished translation
+* Persisted main-window geometry
+
+== Local and OpenAI Setup
+
+The OpenAI provider uses the configured `/v1` endpoint with an API key.
+The local provider uses an OpenAI-compatible local server and can additionally read LM Studio metadata from `/api/v1/models` when the server provides it.
+
+For local models:
+
+* `Test connection` checks `/v1/models`.
+* Available local models are loaded from `/api/v1/models` when that metadata endpoint exists.
+* If exactly one local model can be resolved, the app can use it when the configured local model field is empty.
+* The local request timeout is configured in seconds; `0` disables the app-level timeout for local LLM requests.
+
+Reasoning behavior:
+
+* `Reasoning value when ON` and `Reasoning value when OFF` are configured separately.
+* `Refresh reasoning options` can load the supported values from LM Studio metadata.
+* The local request sends no `reasoning_effort` when reasoning is disabled or the selected value is `none` or `off`.
+* If a local model does not expose reasoning metadata, use it with reasoning disabled or with the `off`/`none` values.
+
+== Document Processing
+
+Document mode processes individual files, multiple files, or whole folders recursively.
+Unsupported files are shown with a reason instead of being silently ignored.
+
+Supported input formats in the current code path:
+
+* TXT, Markdown, AsciiDoc, HTML, RTF, PDF, CSV, TSV
+* DOCX and XLSX when `/usr/bin/unzip` is available
+* ODT when LibreOffice `soffice` is found
+
+Export formats:
+
+* PDF
+* DOCX
+* ODT when `soffice` is available
+* Markdown `.md`
+* HTML
+* AsciiDoc `.adoc`
+* Plain text `.txt`
+* RTF
+
+PDF files are extracted as text and exported as reflowed documents.
+Scanned PDFs without extractable text are reported as unsupported because OCR is not included.
+Embedded PDF images are not reliably extracted in the current implementation.
+
+== Documentation
+
+The full user guide is here:
+
+* link:docs/user-guide.adoc[docs/user-guide.adoc]
+
+== Architecture Overview
+
+image::architecture.svg[Architecture overview, width=900]
+
+== Render AsciiDoc
+
+If `asciidoctor` is installed:
+
+[source,bash]
+----
+asciidoctor README.adoc
+asciidoctor docs/user-guide.adoc
+----
+
+== Tests and Validation
+
+Check the build:
+
+[source,bash]
+----
+swift build
+----
+
+This package currently has no `Tests` target.
+`swift test` builds the package, then reports that no tests were found.
+
+== Local App Bundle / DMG
+
+A simple local app bundle can be created with system tools:
+
+[source,bash]
+----
+swift build -c release
+
+rm -rf dist
+mkdir -p dist/AbyssLTranslator.app/Contents/MacOS
+mkdir -p dist/AbyssLTranslator.app/Contents/Resources
+
+cp .build/arm64-apple-macosx/release/AbyssLTranslator \
+  dist/AbyssLTranslator.app/Contents/MacOS/
+
+cp -R .build/arm64-apple-macosx/release/AbyssLTranslator_AbyssLTranslator.bundle \
+  dist/AbyssLTranslator.app/
+----
+
+The generated SwiftPM resource accessor expects the bundle at `AbyssLTranslator.app/AbyssLTranslator_AbyssLTranslator.bundle`.
+An `Info.plist`, signing, and DMG creation can then be handled with `codesign` and `hdiutil`.
+
+== License
+
+This software is licensed under the MIT license.

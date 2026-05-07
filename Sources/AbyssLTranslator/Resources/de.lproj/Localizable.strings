@@ -1,0 +1,217 @@
+"app.title" = "AbyssL Übersetzer";
+
+"mode.translator" = "Übersetzer";
+"mode.correction" = "Rechtschreibkorrektur";
+"mode.document" = "Dokument Übersetzen/Korrigieren";
+
+"picker.model" = "Modell";
+"picker.provider" = "Anbieter";
+"picker.language" = "Sprache";
+
+"toggle.reasoning" = "Reasoning";
+"toggle.reasoning.help" = "Erlaubt tiefere Überlegung im Prompt (Ausgabe bleibt JSON-only).";
+
+"settings.open" = "Einstellungen";
+
+"pane.source" = "Quelle";
+"pane.target" = "Übersetzung";
+
+"style.register" = "Register";
+"style.complexity" = "Komplexität";
+"spelling.mode" = "Rechtschreibung";
+
+"style.register.neutral" = "Neutral";
+"style.register.formal" = "Formell";
+"style.register.informal" = "Informell";
+
+"style.complexity.neutral" = "Neutral";
+"style.complexity.technical" = "Technisch";
+"style.complexity.plain" = "Einfache Sprache";
+
+"spelling.preserve" = "Beibehalten (nur bei Bedarf)";
+"spelling.fixSource" = "Quell-Rechtschreibung korrigieren";
+"spelling.fixTarget" = "Ziel-Rechtschreibung korrigieren";
+
+"synonyms.title" = "Alternativen";
+"synonyms.insertHelp" = "Im Übersetzungsfeld übernehmen";
+"synonyms.empty" = "Keine Alternativen für diese Übersetzung.";
+"alternatives.previous" = "Vorherigen Vorschlag anzeigen";
+"alternatives.next" = "Nächsten Vorschlag anzeigen";
+"alternatives.reload" = "Neue Vorschläge erzeugen";
+"alternatives.instruction.placeholder" = "Anweisung für den markierten Text oder die ganze Übersetzung";
+"alternatives.instruction.submit" = "Anweisung an KI senden";
+
+"action.translateNow" = "Übersetzen";
+"action.correctWriting" = "Korrigieren";
+"action.correctWriting.help" = "Text auf Rechtschreibung und Grammatik prüfen";
+"action.rewrite" = "Umformulieren";
+"action.rewrite.help" = "Text mit der gewählten Stilvorgabe umformulieren";
+"action.copyCorrection" = "Korrigierten Text kopieren";
+"action.copyCorrection.help" = "Text in die Zwischenablage kopieren";
+"action.clearCorrection" = "Leeren";
+"action.clearCorrection.help" = "Korrekturtext leeren";
+"action.suggestAlternatives" = "KI-Alternativen";
+"action.suggestAlternatives.help" = "KI-Alternativen für die markierte Textstelle anzeigen";
+"action.copyTranslation" = "Übersetzung kopieren";
+"action.copyTranslation.help" = "Übersetzung in die Zwischenablage kopieren";
+"action.clearSource" = "Leeren";
+"action.clearSource.help" = "Quelltext und Übersetzung leeren";
+
+"writing.style.preset" = "Stil";
+"writing.style.standard" = "Natürlich";
+"writing.style.formal" = "Formell";
+"writing.style.concise" = "Kurz";
+"writing.instruction.placeholder" = "Direkte Anweisung an die KI, z. B. \"Der Text soll wie aus dem 17. Jahrhundert klingen\"";
+"writing.correction.reason.default" = "Korrektur";
+"writing.correction.restoreOriginal" = "Original wiederherstellen";
+
+"settings.tab.connection" = "Verbindung";
+"settings.tab.defaults" = "Standardwerte";
+
+"settings.section.openai" = "OpenAI";
+"settings.section.provider" = "KI-Anbieter";
+"settings.apiKey" = "API-Schlüssel";
+"settings.apiKey.help" = "Lokal in UserDefaults gespeichert. Verwenden Sie möglichst einen eingeschränkten Schlüssel.";
+
+"settings.section.endpoint" = "Endpunkt";
+"settings.host" = "Host";
+"settings.port" = "Port";
+"settings.https" = "HTTPS verwenden";
+"settings.endpoint.help" = "Standard ist api.openai.com auf Port 443. Für lokale Gateways Host/Port setzen und ggf. HTTPS deaktivieren.";
+
+"settings.section.models" = "Modelle";
+"settings.autoTranslate" = "Automatisch beim Tippen übersetzen";
+"settings.alternativeSuggestionCount" = "KI-Alternativen: %d";
+"settings.correctionAlternativeCount" = "Korrektur-Alternativen: %d";
+"settings.reasoningOn" = "Reasoning-Wert bei ON";
+"settings.reasoningOff" = "Reasoning-Wert bei OFF";
+"settings.reasoning.refresh" = "Reasoning-Optionen aktualisieren";
+"settings.reasoning.refresh.success" = "Reasoning-Optionen aktualisiert.";
+"settings.reasoning.unavailable" = "Das lokale Modell stellt keine Reasoning-Optionen bereit.";
+"settings.reasoning.option.none" = "Keine";
+"settings.reasoning.option.off" = "Aus";
+"settings.reasoning.option.on" = "Ein";
+"settings.reasoning.option.low" = "Niedrig";
+"settings.reasoning.option.medium" = "Mittel";
+"settings.reasoning.option.high" = "Hoch";
+"settings.section.languages" = "Sprachen";
+"settings.section.style" = "Stil";
+"settings.section.display" = "Anzeige";
+"settings.editorFontSize" = "Schriftgröße: %.0f pt";
+"settings.section.captureShortcut" = "Text aus anderer App übernehmen";
+"settings.captureShortcut.modifier" = "Modifier";
+"settings.captureShortcut.key" = "Taste";
+"settings.captureShortcut.current" = "Aktuelle Kombination: %@";
+"settings.captureShortcut.help" = "Markierten Text in einer anderen App auswählen und die Kombination drücken. Standard ist Ctrl+C+C. Für das automatische Kopieren muss macOS der App Bedienungshilfen/Input-Monitoring erlauben.";
+"settings.captureShortcut.modifier.control" = "Strg";
+"settings.captureShortcut.modifier.option" = "Option";
+"settings.captureShortcut.modifier.command" = "Command";
+"settings.captureShortcut.modifier.shift" = "Shift";
+"settings.section.localLLM" = "Lokale LLM";
+"settings.llmProfile" = "LLM-Profil";
+"settings.llmProfile.name" = "Profilname";
+"settings.llmProfile.add" = "Profil hinzufügen";
+"settings.llmProfile.delete" = "Profil löschen";
+"settings.local.host" = "Lokaler Host";
+"settings.local.port" = "Lokaler Port";
+"settings.local.https" = "HTTPS für lokalen Endpunkt verwenden";
+"settings.local.model" = "Lokales Modell";
+"settings.local.apiKey" = "Lokaler API-Schlüssel (optional)";
+"settings.local.timeoutSeconds" = "Lokaler Request-Timeout (Sekunden)";
+"settings.local.timeout.help" = "0 deaktiviert den App-Timeout für lokale LLM-Anfragen.";
+"settings.local.help" = "Verwenden Sie einen OpenAI-kompatiblen lokalen Endpunkt (z. B. LM Studio) mit /v1-Endpunkten.";
+"settings.local.models.available" = "Verfügbare LLMs";
+"settings.testConnection" = "Verbindung testen";
+"settings.testConnection.success" = "Verbindung erfolgreich.";
+
+"language.automatic" = "Sprache erkennen";
+"language.enUS" = "Englisch (US)";
+"language.enGB" = "Englisch (UK)";
+"language.de" = "Deutsch";
+"language.fr" = "Französisch";
+"language.es" = "Spanisch";
+"language.it" = "Italienisch";
+"language.pt" = "Portugiesisch";
+"language.nl" = "Niederländisch";
+"language.pl" = "Polnisch";
+"language.ru" = "Russisch";
+"language.ja" = "Japanisch";
+"language.ko" = "Koreanisch";
+"language.zhHans" = "Chinesisch (vereinfacht)";
+"language.zhHant" = "Chinesisch (traditionell)";
+
+"model.gpt4o" = "GPT-4o";
+"model.gpt4oMini" = "GPT-4o mini";
+"model.gpt35Turbo" = "GPT-3.5 Turbo";
+"provider.openai" = "OpenAI";
+"provider.local" = "Lokale LLM";
+"local.model.placeholder" = "Lokales Modell (z. B. llama3.1)";
+
+"error.emptyHost" = "Server-Host ist leer.";
+"error.badURL" = "Endpunkt-URL konnte nicht erstellt werden.";
+"error.emptyLocalModel" = "Lokaler Modellname ist leer.";
+"error.localModelNotFound" = "Keine LM-Studio-Metadaten für das lokale Modell \"%@\" gefunden.";
+"error.missingAPIKey" = "API-Schlüssel fehlt. Bitte in den Einstellungen eintragen.";
+"error.invalidResponse" = "Unerwartete Server-Antwort.";
+"error.httpStatus" = "HTTP-Fehler %d.";
+"error.decodingFailed" = "Antwort konnte nicht gelesen werden: %@.";
+
+"document.drop.title" = "Dokumente";
+"document.drop.message" = "Dateien oder Ordner hier ablegen";
+"document.drop.detail" = "Unterstützte Dateien werden rekursiv verarbeitet; nicht unterstützte Dateien werden gemeldet.";
+"document.drop.emptyList" = "Noch keine Dokumente ausgewählt.";
+"document.drop.empty" = "Keine Dateien gefunden.";
+"document.drop.summary" = "%d Einträge hinzugefügt, %d davon aktuell unterstützbar.";
+"document.export.title" = "Export File";
+"document.export.format" = "Format";
+"document.output.none" = "Kein Zielverzeichnis gewählt.";
+"document.instruction.placeholder" = "Optionale KI-Anweisung für diese Dokumente";
+"document.operation.correct" = "Korrigieren";
+"document.operation.translate" = "Übersetzen";
+"document.export.images" = "Bilder bei AsciiDoc als ZIP exportieren";
+"document.naming.title" = "Namen anpassen";
+"document.naming.customize" = "Namen anpassen";
+"document.naming.timestamp" = "Datum-Uhrzeit anhängen";
+"document.naming.language" = "Zielsprache anhängen";
+"document.naming.suffix" = "Eigener Namenszusatz";
+"document.action.chooseFiles" = "Datei/Ordner wählen";
+"document.action.chooseOutput" = "Zielverzeichnis wählen";
+"document.action.clear" = "Leeren";
+"document.action.start" = "Dokumente verarbeiten";
+"document.action.cancel" = "Abbrechen";
+"document.jobs.summary" = "%d von %d Dateien unterstützbar";
+"document.progress.counts" = "Erledigt: %d/%d, offen: %d";
+"document.progress.current" = "Aktuell: %@";
+"document.progress.elapsed" = "Verstrichen: %@";
+"document.result.success" = "Export erfolgreich.";
+"document.result.summary" = "%d von %d Dateien verarbeitet.";
+"document.result.cancelled" = "Dokumentverarbeitung abgebrochen.";
+"document.format.pdf" = "PDF";
+"document.format.docx" = "Word DOCX";
+"document.format.odt" = "OpenDocument ODT";
+"document.format.markdown" = "Markdown";
+"document.format.html" = "HTML";
+"document.format.asciidoc" = "AsciiDoc";
+"document.format.plainText" = "Plain-Text";
+"document.format.rtf" = "RTF";
+"document.format.pages" = "Apple Pages";
+"document.format.numbers" = "Apple Numbers";
+"document.error.unsupported" = "Dieses Dateiformat wird nicht unterstützt.";
+"document.error.unzipUnavailable" = "DOCX/XLSX benötigt /usr/bin/unzip, das auf diesem System nicht verfügbar ist.";
+"document.error.odtUnavailable" = "ODT benötigt LibreOffice/soffice; kein sicherer lokaler Converter gefunden.";
+"document.error.pagesUnavailable" = "Pages wird nicht angeboten, weil kein sicherer lokaler Export-Converter verfügbar ist.";
+"document.error.numbersUnavailable" = "Numbers wird nicht angeboten, weil kein sicherer lokaler Export-Converter verfügbar ist.";
+"document.error.exportUnavailable" = "Dieses Exportformat ist aktuell nicht verfügbar.";
+"document.error.noOutputDirectory" = "Bitte ein Zielverzeichnis auswählen.";
+"document.error.noOperation" = "Bitte Übersetzen, Korrigieren oder beides auswählen.";
+"document.error.pdfReadFailed" = "PDF konnte nicht gelesen werden.";
+"document.error.scannedPDF" = "Das PDF enthält keinen extrahierbaren Text. OCR ist in dieser Version nicht enthalten.";
+"document.error.emptyDocument" = "Im Dokument wurde kein verarbeitbarer Text gefunden.";
+"document.error.odtConvertFailed" = "ODT-Konvertierung ist fehlgeschlagen.";
+"document.error.xlsxReadFailed" = "XLSX konnte nicht gelesen werden.";
+"document.error.encodingFailed" = "Textkodierung konnte nicht gelesen werden.";
+"document.error.pdfWriteFailed" = "PDF konnte nicht geschrieben werden.";
+"document.error.processFailed" = "Externer Prozess ist fehlgeschlagen.";
+
+"menu.translation" = "Übersetzung";
+"menu.translateNow" = "Jetzt übersetzen";
