@@ -648,7 +648,7 @@ If `asciidoctor` is installed:
 [source,bash]
 ----
 asciidoctor README.adoc
-asciidoctor docs/user-guide.adoc
+asciidoctor app-docs/user-guide.adoc
 ----
 
-The diagrams are regular SVG files in `docs/images/`.
+The diagrams are regular SVG files in `app-docs/images/`.

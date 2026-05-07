@@ -3,7 +3,7 @@
 :toclevels: 2
 :sectanchors:
 :icons: font
-:imagesdir: docs/images
+:imagesdir: app-docs/images
 
 AbyssL Translator is a macOS app for translation, spelling correction, rewriting, and document processing through an OpenAI-compatible chat-completions endpoint.
 The app has three workspace modes:
@@ -133,7 +133,7 @@ Embedded PDF images are not reliably extracted in the current implementation.
 
 The full user guide is here:
 
-* link:docs/user-guide.adoc[docs/user-guide.adoc]
+* link:app-docs/user-guide.adoc[app-docs/user-guide.adoc]
 
 == Architecture Overview
 
@@ -146,7 +146,7 @@ If `asciidoctor` is installed:
 [source,bash]
 ----
 asciidoctor README.adoc
-asciidoctor docs/user-guide.adoc
+asciidoctor app-docs/user-guide.adoc
 ----
 
 == Tests and Validation
