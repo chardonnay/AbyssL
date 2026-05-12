@@ -3,5 +3,9 @@
 dist/
 *.xcodeproj/
 *.xcworkspace/
+!apps/abyssl_flutter/macos/Runner.xcodeproj/
+!apps/abyssl_flutter/macos/Runner.xcodeproj/**
+!apps/abyssl_flutter/macos/Runner.xcworkspace/
+!apps/abyssl_flutter/macos/Runner.xcworkspace/**
 DerivedData/
 .DS_Store

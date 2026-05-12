@@ -5,37 +5,224 @@
 :icons: font
 :imagesdir: app-docs/images
 
-AbyssL Translator is a macOS app for translation, spelling correction, rewriting, and document processing through an OpenAI-compatible chat-completions endpoint.
-The app has three workspace modes:
+AbyssL Translator is a desktop app for translation, spelling correction, rewriting, and document processing through OpenAI-compatible chat-completions APIs.
 
-* `Translator` for direct source-to-translation work
-* `Spelling Correction` for correction, style presets, direct AI instructions, and alternatives
-* `Document Translate/Correct` for batch processing files and folders
+The repository currently contains two app paths:
 
-It also supports AI alternatives, local LLM profiles, reasoning options from LM Studio metadata, local request timeouts, and a configurable global capture shortcut.
+* `apps/abyssl_flutter`: the Flutter desktop port for macOS, Windows, and Linux.
+* `Sources/AbyssLTranslator`: the existing SwiftUI/AppKit macOS app, kept as the reference implementation while the Flutter port reaches production parity.
+
+The app exposes three workspace modes:
+
+* `Translator` for source-to-target translation and alternatives.
+* `Correction` for spelling correction, rewrite presets, and marked text changes.
+* `Documents` for batch processing files and folders.
 
 image::translation-flow.svg[Translation flow, width=900]
 
-== Status
+== API Compatibility
 
-This documentation describes the current Swift package.
-No external endpoints are assumed beyond the OpenAI-compatible paths used by the app:
+AbyssL uses OpenAI-compatible endpoints only. No other API endpoints are assumed by this repository.
 
-* `/v1/chat/completions` for translation, correction, rewriting, and alternatives
-* `/v1/models` for connection tests
-* `/api/v1/models` for LM Studio metadata, local model lists, and reasoning options
+* `/v1/chat/completions` for translation, correction, rewriting, and alternatives.
+* `/v1/models` for connection checks and OpenAI-compatible model lists.
+* `/api/v1/models` for LM Studio metadata when the local server provides it.
+
+For local LLMs, the app can use LM Studio metadata to detect loaded models and supported reasoning values.
+If metadata is unavailable, the user can enter the local model name and reasoning values manually.
 
 == Requirements
 
-* macOS 14 or newer
-* Swift 5.9 compatible toolchain
-* Optional: an OpenAI API key or a local OpenAI-compatible server such as LM Studio
-* For global text capture from other apps: macOS Accessibility permission, and possibly Input Monitoring
-* For DOCX/XLSX input: `/usr/bin/unzip`
-* For AsciiDoc ZIP export: `/usr/bin/zip`
-* Optional for ODT input/export: LibreOffice `soffice`
+Flutter port:
 
-== Build and Run
+* Flutter SDK with desktop support for the target platform.
+* A host platform matching the desktop build target:
+  ** macOS host for macOS builds.
+  ** Windows host for Windows builds.
+  ** Linux host for Linux builds.
+* Optional: OpenAI API key.
+* Optional: local OpenAI-compatible server such as LM Studio.
+* Optional for ODT import/export: LibreOffice `soffice`.
+* Optional for non-macOS PDF text extraction: `pdftotext` or `mutool` on `PATH`.
+
+Swift reference app:
+
+* macOS 14 or newer.
+* Swift 5.9 compatible toolchain.
+
+== Build and Run the Flutter App
+
+[source,bash]
+----
+cd apps/abyssl_flutter
+flutter pub get
+flutter run -d macos
+----
+
+Use the matching desktop device on other hosts:
+
+[source,bash]
+----
+flutter run -d windows
+flutter run -d linux
+----
+
+Debug builds:
+
+[source,bash]
+----
+flutter build macos --debug
+flutter build windows --debug
+flutter build linux --debug
+----
+
+Windows and Linux builds must be produced and validated on their matching hosts.
+
+== Validate the Flutter App
+
+[source,bash]
+----
+cd apps/abyssl_flutter
+flutter analyze
+flutter test
+flutter build macos --debug
+----
+
+Manual smoke path:
+
+. Start a local OpenAI-compatible server or configure OpenAI in `Settings`.
+. Start the app with `flutter run -d macos`, `flutter run -d windows`, or `flutter run -d linux`.
+. Open `Settings`.
+. Select `OpenAI` or `Local LLM`.
+. For `Local LLM`, choose `HTTP` or `HTTPS`, then click `Detect Local` to load available models and reasoning metadata when available.
+. Translate a multi-paragraph source text and verify the `Translation` field keeps paragraph breaks and blank lines.
+. Open `Correction`, run `Correct`, and verify the issue count plus highlighted input/output changes.
+. Open `Documents`, add a supported file, choose an output folder, run processing, and verify progress plus the generated output file.
+
+== Settings and Secrets
+
+Non-secret settings are stored through Flutter preferences.
+API keys are stored through OS secure storage by `flutter_secure_storage`.
+If secure storage is unavailable, AbyssL reports the error and does not silently persist API keys as plaintext.
+
+Settings include:
+
+* Provider: `OpenAI` or `Local LLM`.
+* Host, port, and protocol. Local LLMs can use `HTTP` or `HTTPS`.
+* OpenAI model selection.
+* Local model detection and manual local model entry.
+* Reasoning ON/OFF values with per-model remembered settings.
+* Appearance: `System`, `Light`, or `Dark`.
+* Editor font size.
+* Global capture shortcut modifier and key.
+
+== Translation Workflow
+
+Translator mode supports:
+
+* Source and target language selection.
+* Register, complexity, and spelling controls.
+* Direct translation instructions.
+* Translation with preserved source formatting where possible, including paragraph breaks, blank lines, line breaks, list markers, and item order.
+* Synonyms and alternative suggestions.
+* Copy result.
+* Clear Source and Translation.
+* Cancel the active AI request.
+
+The app requests JSON-compatible translation data from OpenAI-compatible providers.
+For local LLM compatibility, local requests use provider-specific response-format handling and retry without optional compatibility fields if the local endpoint rejects them.
+
+== Correction and Rewrite Workflow
+
+Correction mode supports:
+
+* Direct correction or rewrite instruction.
+* `Correct` for spelling, grammar, punctuation, and wording issues.
+* Marked erroneous input spans.
+* Marked corrected output spans.
+* Issue count after correction.
+* Correction cards with alternatives when returned by the model.
+* `Rewrite` with these presets:
+  ** `Standard`
+  ** `Formal`
+  ** `Concise`
+  ** `Ultra Short`
+* Clear input and output.
+* Copy result.
+* Cancel the active AI request.
+
+== Local LLM and Reasoning
+
+Local model behavior:
+
+* `Detect Local` loads available models from `/api/v1/models` when available, falling back to `/v1/models`.
+* Loaded LM Studio models are marked in the model dropdown when the metadata provides that information.
+* If exactly one loaded model is detected, AbyssL can use it automatically.
+* The user can still enter a local model name manually.
+
+Reasoning behavior:
+
+* AbyssL can read supported reasoning values from LM Studio metadata when available.
+* Reasoning settings are remembered per local model and restored when the same model is selected again.
+* For local LLMs, choosing `off` sends `reasoning_effort: "off"`.
+* Choosing `none` omits `reasoning_effort`.
+* If a local model does not expose reasoning metadata, set the values manually or keep reasoning disabled.
+
+== Document Processing
+
+Document mode processes individual files, multiple files, or folders recursively.
+Unsupported files are shown with a reason instead of being silently ignored.
+
+Supported input formats in the Flutter document path:
+
+* TXT, Markdown, AsciiDoc, HTML, RTF
+* PDF with extractable text
+* CSV, TSV
+* DOCX, XLSX
+* ODT when LibreOffice `soffice` is available
+
+Unsupported input formats:
+
+* Pages
+* Numbers
+* DOC
+* Scanned PDFs without extractable text
+
+Export formats:
+
+* PDF
+* DOCX
+* ODT when LibreOffice `soffice` is available
+* Markdown `.md`
+* HTML
+* AsciiDoc `.adoc`
+* Plain text `.txt`
+* RTF
+
+PDF text extraction uses native macOS support when available.
+On other platforms, AbyssL looks for `pdftotext` or `mutool` on `PATH`.
+
+== Global Capture
+
+The capture shortcut uses a modifier plus a key pressed twice, for example `Control+C+C`.
+
+Platform status:
+
+* macOS: native capture adapter, requiring Accessibility permission and possibly Input Monitoring.
+* Windows: native capture adapter using a low-level keyboard hook and clipboard copy.
+* Linux: status-only adapter in this build. Wayland does not expose a safe generic global text-capture API to this app, and the X11 capture adapter is not enabled. Use manual copy/paste.
+
+Manual capture validation:
+
+. Open AbyssL.
+. Confirm the capture shortcut in `Settings`.
+. Select text in a native text editor.
+. Trigger the configured capture shortcut.
+. Verify AbyssL focuses and receives exactly the selected text.
+
+== Swift Reference App
+
+The SwiftUI/AppKit app remains available as the macOS reference implementation.
 
 [source,bash]
 ----
@@ -51,91 +238,15 @@ swift build -c release
 .build/release/AbyssLTranslator
 ----
 
-When distributing the SwiftPM release build directly, keep the resource bundle next to the binary:
-
-* `.build/arm64-apple-macosx/release/AbyssLTranslator`
-* `.build/arm64-apple-macosx/release/AbyssLTranslator_AbyssLTranslator.bundle`
-
-== Quick Start
-
-. Start the app.
-. Open `Settings`.
-. In `Connection`, choose `OpenAI` or `Local LLM`.
-. Enter the API key, host, port, HTTPS setting, and model for the selected provider.
-. For a local LLM, optionally run `Test connection` to list available models.
-. In the main window, choose `Translator`, `Spelling Correction`, or `Document Translate/Correct`.
-. In `Translator` mode, enter text in `Source`; the source editor receives focus on startup.
-. Read or edit the result in `Translation`.
-. Optionally select text in `Translation` and generate AI alternatives.
-
-== Main Features
-
-* Automatic translation while typing when `Autotranslation` is enabled
-* Manual translation with `Cmd+Return`
-* Global capture shortcut: default `Control+C+C` on selected text in another app, configurable in Settings
-* Spelling correction with marked changes, tooltips, alternatives, and restoring the original text
-* Rewriting with a button, direct AI instructions, and three style presets
-* Document processing with drop zone, file/folder picker, output folder, export formats, optional AI instruction, and progress display
-* LLM profiles for different local models and servers
-* Reasoning options from LM Studio metadata
-* Local request timeout; `0` disables the app timeout for local LLM requests
-* AI alternatives for selected text or the whole translation
-* Persisted editor font size for Source, Translation, and Alternatives
-* Copy button for the finished translation
-* Persisted main-window geometry
-
-== Local and OpenAI Setup
-
-The OpenAI provider uses the configured `/v1` endpoint with an API key.
-The local provider uses an OpenAI-compatible local server and can additionally read LM Studio metadata from `/api/v1/models` when the server provides it.
-
-For local models:
-
-* `Test connection` checks `/v1/models`.
-* Available local models are loaded from `/api/v1/models` when that metadata endpoint exists.
-* If exactly one local model can be resolved, the app can use it when the configured local model field is empty.
-* The local request timeout is configured in seconds; `0` disables the app-level timeout for local LLM requests.
-
-Reasoning behavior:
-
-* `Reasoning value when ON` and `Reasoning value when OFF` are configured separately.
-* `Refresh reasoning options` can load the supported values from LM Studio metadata.
-* The local request sends no `reasoning_effort` when reasoning is disabled or the selected value is `none` or `off`.
-* If a local model does not expose reasoning metadata, use it with reasoning disabled or with the `off`/`none` values.
-
-== Document Processing
-
-Document mode processes individual files, multiple files, or whole folders recursively.
-Unsupported files are shown with a reason instead of being silently ignored.
-
-Supported input formats in the current code path:
-
-* TXT, Markdown, AsciiDoc, HTML, RTF, PDF, CSV, TSV
-* DOCX and XLSX when `/usr/bin/unzip` is available
-* ODT when LibreOffice `soffice` is found
-
-Export formats:
-
-* PDF
-* DOCX
-* ODT when `soffice` is available
-* Markdown `.md`
-* HTML
-* AsciiDoc `.adoc`
-* Plain text `.txt`
-* RTF
-
-PDF files are extracted as text and exported as reflowed documents.
-Scanned PDFs without extractable text are reported as unsupported because OCR is not included.
-Embedded PDF images are not reliably extracted in the current implementation.
+When distributing the SwiftPM release build directly, keep the generated resource bundle next to the binary.
 
 == Documentation
 
-The full user guide is here:
+Additional documentation:
 
-* link:app-docs/user-guide.adoc[app-docs/user-guide.adoc]
+* link:app-docs/user-guide.adoc[app-docs/user-guide.adoc] - legacy macOS user guide.
 
-== Architecture Overview
+Architecture overview:
 
 image::architecture.svg[Architecture overview, width=900]
 
@@ -148,40 +259,6 @@ If `asciidoctor` is installed:
 asciidoctor README.adoc
 asciidoctor app-docs/user-guide.adoc
 ----
-
-== Tests and Validation
-
-Check the build:
-
-[source,bash]
-----
-swift build
-----
-
-This package currently has no `Tests` target.
-`swift test` builds the package, then reports that no tests were found.
-
-== Local App Bundle / DMG
-
-A simple local app bundle can be created with system tools:
-
-[source,bash]
-----
-swift build -c release
-
-rm -rf dist
-mkdir -p dist/AbyssLTranslator.app/Contents/MacOS
-mkdir -p dist/AbyssLTranslator.app/Contents/Resources
-
-cp .build/arm64-apple-macosx/release/AbyssLTranslator \
-  dist/AbyssLTranslator.app/Contents/MacOS/
-
-cp -R .build/arm64-apple-macosx/release/AbyssLTranslator_AbyssLTranslator.bundle \
-  dist/AbyssLTranslator.app/
-----
-
-The generated SwiftPM resource accessor expects the bundle at `AbyssLTranslator.app/AbyssLTranslator_AbyssLTranslator.bundle`.
-An `Info.plist`, signing, and DMG creation can then be handled with `codesign` and `hdiutil`.
 
 == License
 
