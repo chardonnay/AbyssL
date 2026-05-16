@@ -19,6 +19,7 @@ class AppDelegate: FlutterAppDelegate {
     if let controller = mainFlutterWindow?.contentViewController as? FlutterViewController {
       configureChannels(for: controller)
     }
+    foregroundMainWindow()
   }
 
   func configureChannels(for controller: FlutterViewController) {
@@ -51,6 +52,14 @@ class AppDelegate: FlutterAppDelegate {
 
   override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
     return true
+  }
+
+  private func foregroundMainWindow() {
+    DispatchQueue.main.async { [weak self] in
+      NSApp.setActivationPolicy(.regular)
+      self?.mainFlutterWindow?.makeKeyAndOrderFront(nil)
+      NSApp.activate(ignoringOtherApps: true)
+    }
   }
 
   private func handle(call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -220,8 +229,12 @@ class AppDelegate: FlutterAppDelegate {
     completion: @escaping (String?) -> Void
   ) {
     let pasteboard = NSPasteboard.general
-    if pasteboard.changeCount != initialChangeCount || Date() >= deadline {
+    if pasteboard.changeCount != initialChangeCount {
       completion(pasteboard.string(forType: .string))
+      return
+    }
+    if Date() >= deadline {
+      completion(nil)
       return
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in

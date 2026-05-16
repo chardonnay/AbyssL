@@ -19,10 +19,12 @@ class CaptureStatus {
 
 class DesktopCaptureService {
   DesktopCaptureService() {
+    _activeService = this;
     _channel.setMethodCallHandler(_handleMethodCall);
   }
 
   static const _channel = MethodChannel('org.abyssl.translator/capture');
+  static DesktopCaptureService? _activeService;
   final _captureController = StreamController<String>.broadcast();
 
   Stream<String> get capturedText => _captureController.stream;
@@ -81,6 +83,9 @@ class DesktopCaptureService {
   }
 
   Future<dynamic> _handleMethodCall(MethodCall call) async {
+    if (!identical(_activeService, this) || _captureController.isClosed) {
+      return;
+    }
     if (call.method == 'captureText') {
       final text = call.arguments;
       if (text is String && text.trim().isNotEmpty) {
@@ -104,6 +109,10 @@ class DesktopCaptureService {
   }
 
   void dispose() {
+    if (identical(_activeService, this)) {
+      _channel.setMethodCallHandler(null);
+      _activeService = null;
+    }
     _captureController.close();
   }
 }

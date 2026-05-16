@@ -2,29 +2,271 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstring>
 #include <optional>
 #include <thread>
+#include <vector>
 
 #include "flutter/generated_plugin_registrant.h"
 
 namespace {
 constexpr auto kDoubleTapWindow = std::chrono::milliseconds(450);
+constexpr auto kClipboardTimeout = std::chrono::milliseconds(750);
+constexpr auto kInitialClipboardRetryDelay = std::chrono::milliseconds(10);
+constexpr auto kMaxClipboardRetryDelay = std::chrono::milliseconds(80);
 FlutterWindow* g_capture_window = nullptr;
 
-std::string Utf8FromWide(const std::wstring& value) {
+std::mutex& ClipboardMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+class ClipboardSession {
+ public:
+  ClipboardSession() : opened_(OpenClipboard(nullptr) != 0) {}
+
+  ClipboardSession(const ClipboardSession&) = delete;
+  ClipboardSession& operator=(const ClipboardSession&) = delete;
+
+  ~ClipboardSession() {
+    if (opened_) {
+      CloseClipboard();
+    }
+  }
+
+  bool is_open() const { return opened_; }
+
+ private:
+  bool opened_;
+};
+
+class GlobalLockGuard {
+ public:
+  explicit GlobalLockGuard(HGLOBAL handle)
+      : handle_(handle), data_(GlobalLock(handle)) {}
+
+  GlobalLockGuard(const GlobalLockGuard&) = delete;
+  GlobalLockGuard& operator=(const GlobalLockGuard&) = delete;
+
+  ~GlobalLockGuard() {
+    if (data_) {
+      GlobalUnlock(handle_);
+    }
+  }
+
+  void* data() const { return data_; }
+
+ private:
+  HGLOBAL handle_;
+  void* data_;
+};
+
+struct ClipboardData {
+  ClipboardData(UINT format, HGLOBAL handle) : format(format), handle(handle) {}
+
+  ClipboardData(const ClipboardData&) = delete;
+  ClipboardData& operator=(const ClipboardData&) = delete;
+
+  ClipboardData(ClipboardData&& other) noexcept
+      : format(other.format), handle(other.handle) {
+    other.handle = nullptr;
+  }
+
+  ClipboardData& operator=(ClipboardData&& other) noexcept {
+    if (this != &other) {
+      ReleaseOwned();
+      format = other.format;
+      handle = other.handle;
+      other.handle = nullptr;
+    }
+    return *this;
+  }
+
+  ~ClipboardData() { ReleaseOwned(); }
+
+  HGLOBAL Release() {
+    HGLOBAL released = handle;
+    handle = nullptr;
+    return released;
+  }
+
+  UINT format;
+  HGLOBAL handle;
+
+ private:
+  void ReleaseOwned() {
+    if (handle) {
+      GlobalFree(handle);
+      handle = nullptr;
+    }
+  }
+};
+
+std::optional<std::string> Utf8FromWide(const std::wstring& value) {
   if (value.empty()) {
-    return "";
+    return std::string();
   }
   int size = WideCharToMultiByte(CP_UTF8, 0, value.c_str(),
                                  static_cast<int>(value.size()), nullptr, 0,
                                  nullptr, nullptr);
+  if (size == 0) {
+    const DWORD error = GetLastError();
+    (void)error;
+    return std::nullopt;
+  }
   std::string result(size, 0);
-  WideCharToMultiByte(CP_UTF8, 0, value.c_str(),
-                      static_cast<int>(value.size()), result.data(), size,
-                      nullptr, nullptr);
+  int written = WideCharToMultiByte(
+      CP_UTF8, 0, value.c_str(), static_cast<int>(value.size()), result.data(),
+      size, nullptr, nullptr);
+  if (written == 0) {
+    const DWORD error = GetLastError();
+    (void)error;
+    return std::nullopt;
+  }
+  result.resize(static_cast<size_t>(written));
   return result;
+}
+
+std::optional<ClipboardData> DuplicateClipboardFormat(UINT format) {
+  HGLOBAL source = static_cast<HGLOBAL>(GetClipboardData(format));
+  if (!source) {
+    const DWORD error = GetLastError();
+    (void)error;
+    return std::nullopt;
+  }
+  SIZE_T size = GlobalSize(source);
+  if (size == 0) {
+    const DWORD error = GetLastError();
+    (void)error;
+    return std::nullopt;
+  }
+  HGLOBAL copy = GlobalAlloc(GMEM_MOVEABLE, size);
+  if (!copy) {
+    const DWORD error = GetLastError();
+    (void)error;
+    return std::nullopt;
+  }
+  ClipboardData copied(format, copy);
+  GlobalLockGuard source_lock(source);
+  if (!source_lock.data()) {
+    const DWORD error = GetLastError();
+    (void)error;
+    return std::nullopt;
+  }
+  GlobalLockGuard copy_lock(copy);
+  if (!copy_lock.data()) {
+    const DWORD error = GetLastError();
+    (void)error;
+    return std::nullopt;
+  }
+  std::memcpy(copy_lock.data(), source_lock.data(), size);
+  return std::optional<ClipboardData>(std::move(copied));
+}
+
+std::optional<std::vector<ClipboardData>> BackupClipboard() {
+  ClipboardSession clipboard;
+  if (!clipboard.is_open()) {
+    const DWORD error = GetLastError();
+    (void)error;
+    return std::nullopt;
+  }
+
+  std::vector<ClipboardData> backup;
+  UINT format = 0;
+  SetLastError(ERROR_SUCCESS);
+  while ((format = EnumClipboardFormats(format)) != 0) {
+    auto copied = DuplicateClipboardFormat(format);
+    if (!copied) {
+      return std::nullopt;
+    }
+    backup.push_back(std::move(*copied));
+    SetLastError(ERROR_SUCCESS);
+  }
+  if (GetLastError() != ERROR_SUCCESS) {
+    return std::nullopt;
+  }
+  return std::optional<std::vector<ClipboardData>>(std::move(backup));
+}
+
+bool RestoreClipboard(std::vector<ClipboardData>& backup) {
+  ClipboardSession clipboard;
+  if (!clipboard.is_open()) {
+    const DWORD error = GetLastError();
+    (void)error;
+    return false;
+  }
+  if (!EmptyClipboard()) {
+    const DWORD error = GetLastError();
+    (void)error;
+    return false;
+  }
+  for (auto& item : backup) {
+    if (!SetClipboardData(item.format, item.handle)) {
+      const DWORD error = GetLastError();
+      (void)error;
+      return false;
+    }
+    item.Release();
+  }
+  return true;
+}
+
+HWND CopyTargetForForegroundWindow(HWND foreground) {
+  DWORD thread_id = GetWindowThreadProcessId(foreground, nullptr);
+  GUITHREADINFO info = {};
+  info.cbSize = sizeof(info);
+  if (GetGUIThreadInfo(thread_id, &info) && info.hwndFocus) {
+    return info.hwndFocus;
+  }
+  return foreground;
+}
+
+bool SendCopyCommand(HWND foreground) {
+  HWND target = CopyTargetForForegroundWindow(foreground);
+  DWORD_PTR result = 0;
+  return SendMessageTimeoutW(target, WM_COPY, 0, 0, SMTO_ABORTIFHUNG, 200,
+                             &result) != 0;
+}
+
+std::optional<std::wstring> ReadUnicodeClipboardText() {
+  ClipboardSession clipboard;
+  if (!clipboard.is_open()) {
+    const DWORD error = GetLastError();
+    (void)error;
+    return std::nullopt;
+  }
+  HGLOBAL handle = static_cast<HGLOBAL>(GetClipboardData(CF_UNICODETEXT));
+  if (!handle) {
+    const DWORD error = GetLastError();
+    (void)error;
+    return std::nullopt;
+  }
+  GlobalLockGuard text_lock(handle);
+  if (!text_lock.data()) {
+    const DWORD error = GetLastError();
+    (void)error;
+    return std::nullopt;
+  }
+  return std::wstring(static_cast<const wchar_t*>(text_lock.data()));
+}
+
+std::optional<std::string> WaitForCopiedText(DWORD initial_sequence) {
+  auto deadline = std::chrono::steady_clock::now() + kClipboardTimeout;
+  auto delay = kInitialClipboardRetryDelay;
+  while (std::chrono::steady_clock::now() <= deadline) {
+    if (GetClipboardSequenceNumber() != initial_sequence) {
+      auto text = ReadUnicodeClipboardText();
+      if (text) {
+        return Utf8FromWide(*text);
+      }
+    }
+    std::this_thread::sleep_for(delay);
+    delay = std::min(delay * 2, kMaxClipboardRetryDelay);
+  }
+  return std::nullopt;
 }
 
 LRESULT CALLBACK LowLevelKeyboardProc(int code, WPARAM wparam, LPARAM lparam) {
@@ -42,6 +284,10 @@ FlutterWindow::FlutterWindow(const flutter::DartProject& project)
 FlutterWindow::~FlutterWindow() {
   alive_->store(false);
   StopCapture();
+  {
+    std::lock_guard<std::mutex> lock(capture_channel_mutex_);
+    capture_channel_.reset();
+  }
   JoinCaptureThreads();
 }
 
@@ -79,8 +325,11 @@ bool FlutterWindow::OnCreate() {
 void FlutterWindow::OnDestroy() {
   alive_->store(false);
   StopCapture();
+  {
+    std::lock_guard<std::mutex> lock(capture_channel_mutex_);
+    capture_channel_.reset();
+  }
   JoinCaptureThreads();
-  capture_channel_.reset();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -114,13 +363,17 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
 }
 
 void FlutterWindow::ConfigureCaptureChannel() {
-  capture_channel_ =
-      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+  auto capture_channel =
+      std::make_shared<flutter::MethodChannel<flutter::EncodableValue>>(
           flutter_controller_->engine()->messenger(),
           "org.abyssl.translator/capture",
           &flutter::StandardMethodCodec::GetInstance());
+  {
+    std::lock_guard<std::mutex> lock(capture_channel_mutex_);
+    capture_channel_ = capture_channel;
+  }
 
-  capture_channel_->SetMethodCallHandler(
+  capture_channel->SetMethodCallHandler(
       [this](const flutter::MethodCall<flutter::EncodableValue>& call,
              std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
                  result) {
@@ -213,32 +466,48 @@ void FlutterWindow::HandleKeyEvent(DWORD vk_code) {
 
 void FlutterWindow::HandleHotKey() {
   auto now = std::chrono::steady_clock::now();
-  if (last_hotkey_time_.time_since_epoch().count() != 0 &&
-      now - last_hotkey_time_ <= kDoubleTapWindow) {
-    last_hotkey_time_ = std::chrono::steady_clock::time_point();
-    auto weak_alive = std::weak_ptr<std::atomic_bool>(alive_);
-    auto* capture_channel = capture_channel_.get();
-    std::thread worker([weak_alive, capture_channel]() {
-      std::string text = FlutterWindow::CopySelectionFromForegroundWindow();
+  bool should_capture = false;
+  {
+    std::lock_guard<std::mutex> lock(last_hotkey_time_mutex_);
+    if (last_hotkey_time_.time_since_epoch().count() != 0 &&
+        now - last_hotkey_time_ <= kDoubleTapWindow) {
+      last_hotkey_time_ = std::chrono::steady_clock::time_point();
+      should_capture = true;
+    } else {
+      last_hotkey_time_ = now;
+    }
+  }
+  if (!should_capture) {
+    return;
+  }
+
+  auto weak_alive = std::weak_ptr<std::atomic_bool>(alive_);
+  std::weak_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      weak_capture_channel;
+  {
+    std::lock_guard<std::mutex> lock(capture_channel_mutex_);
+    weak_capture_channel = capture_channel_;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(capture_threads_mutex_);
+    if (!alive_->load()) {
+      return;
+    }
+    capture_threads_.emplace_back([weak_alive, weak_capture_channel]() {
       auto alive = weak_alive.lock();
-      if (!alive || !alive->load() || text.empty() ||
-          capture_channel == nullptr) {
+      if (!alive || !alive->load() || weak_capture_channel.expired()) {
+        return;
+      }
+      std::string text = FlutterWindow::CopySelectionFromForegroundWindow();
+      alive = weak_alive.lock();
+      auto capture_channel = weak_capture_channel.lock();
+      if (!alive || !alive->load() || text.empty() || !capture_channel) {
         return;
       }
       capture_channel->InvokeMethod(
           "captureText", std::make_unique<flutter::EncodableValue>(text));
     });
-    {
-      std::lock_guard<std::mutex> lock(capture_threads_mutex_);
-      if (alive_->load()) {
-        capture_threads_.push_back(std::move(worker));
-      }
-    }
-    if (worker.joinable()) {
-      worker.join();
-    }
-  } else {
-    last_hotkey_time_ = now;
   }
 }
 
@@ -247,39 +516,22 @@ std::string FlutterWindow::CopySelectionFromForegroundWindow() {
   if (!foreground) {
     return "";
   }
-  SetForegroundWindow(foreground);
 
-  INPUT inputs[4] = {};
-  inputs[0].type = INPUT_KEYBOARD;
-  inputs[0].ki.wVk = VK_CONTROL;
-  inputs[1].type = INPUT_KEYBOARD;
-  inputs[1].ki.wVk = 'C';
-  inputs[2].type = INPUT_KEYBOARD;
-  inputs[2].ki.wVk = 'C';
-  inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
-  inputs[3].type = INPUT_KEYBOARD;
-  inputs[3].ki.wVk = VK_CONTROL;
-  inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
-  SendInput(4, inputs, sizeof(INPUT));
-  std::this_thread::sleep_for(std::chrono::milliseconds(160));
-
-  if (!OpenClipboard(nullptr)) {
+  std::lock_guard<std::mutex> lock(ClipboardMutex());
+  auto backup = BackupClipboard();
+  if (!backup) {
     return "";
   }
-  HANDLE handle = GetClipboardData(CF_UNICODETEXT);
-  if (!handle) {
-    CloseClipboard();
+  DWORD initial_sequence = GetClipboardSequenceNumber();
+  if (!SendCopyCommand(foreground)) {
+    RestoreClipboard(*backup);
     return "";
   }
-  LPCWSTR data = static_cast<LPCWSTR>(GlobalLock(handle));
-  if (!data) {
-    CloseClipboard();
+  auto copied_text = WaitForCopiedText(initial_sequence);
+  if (!RestoreClipboard(*backup) || !copied_text) {
     return "";
   }
-  std::wstring text(data);
-  GlobalUnlock(handle);
-  CloseClipboard();
-  return Utf8FromWide(text);
+  return *copied_text;
 }
 
 UINT FlutterWindow::KeyCode() const {

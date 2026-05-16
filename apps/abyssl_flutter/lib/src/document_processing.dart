@@ -89,6 +89,13 @@ class DocumentProcessingService {
   static List<DocumentExportFormat> availableExportFormats({
     required bool hasSpreadsheetInput,
   }) {
+    if (hasSpreadsheetInput) {
+      return const [
+        DocumentExportFormat.pdf,
+        DocumentExportFormat.html,
+        DocumentExportFormat.plainText,
+      ];
+    }
     final formats = <DocumentExportFormat>[
       DocumentExportFormat.pdf,
       DocumentExportFormat.docx,

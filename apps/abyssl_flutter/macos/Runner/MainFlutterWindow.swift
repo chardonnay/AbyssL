@@ -3,6 +3,8 @@ import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
   override func awakeFromNib() {
+    super.awakeFromNib()
+
     let flutterViewController = FlutterViewController()
     var windowFrame = self.frame
     windowFrame.size = NSSize(width: 1250, height: 763)
@@ -15,7 +17,5 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
     (NSApplication.shared.delegate as? AppDelegate)?.configureChannels(for: flutterViewController)
-
-    super.awakeFromNib()
   }
 }

@@ -1,96 +1,103 @@
-#!/usr/bin/env bash
+#!/bin/bash
+# Build the Flutter macOS release app and package the .app bundle as a zip.
+
 set -euo pipefail
 
-APP_EXECUTABLE="AbyssLTranslator"
-APP_DISPLAY_NAME="AbyssL Translator"
-BUNDLE_IDENTIFIER="org.abyssl.translator"
-RESOURCE_BUNDLE="AbyssLTranslator_AbyssLTranslator.bundle"
-DIST_DIR="${DIST_DIR:-dist}"
-APP_VERSION="${APP_VERSION:-0.0.0}"
-BUILD_NUMBER="${BUILD_NUMBER:-1}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
 
-rm -rf "$DIST_DIR"
-mkdir -p "$DIST_DIR"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+readonly REPO_ROOT
 
-swift build -c release --arch arm64
+readonly APP_DIR="${REPO_ROOT}/apps/abyssl_flutter"
+readonly FLUTTER_BIN="${FLUTTER_BIN:-flutter}"
+readonly APP_BUNDLE_NAME="abyssl_flutter.app"
+readonly ARCHIVE_NAME="abyssl_flutter-macos-release.zip"
 
-BINARY_PATH="$(find .build -path "*/release/$APP_EXECUTABLE" -type f | sort | head -n 1)"
-RESOURCE_BUNDLE_PATH="$(find .build -path "*/release/$RESOURCE_BUNDLE" -type d | sort | head -n 1)"
-
-if [[ -z "$BINARY_PATH" || ! -f "$BINARY_PATH" ]]; then
-  echo "Release binary not found for $APP_EXECUTABLE." >&2
+die() {
+  printf 'error: %s\n' "$*" >&2
   exit 1
-fi
+}
 
-if [[ -z "$RESOURCE_BUNDLE_PATH" || ! -d "$RESOURCE_BUNDLE_PATH" ]]; then
-  echo "SwiftPM resource bundle not found: $RESOURCE_BUNDLE." >&2
-  exit 1
-fi
+resolve_dist_dir() {
+  local configured_dist_dir="${DIST_DIR:-dist}"
 
-if ! lipo -archs "$BINARY_PATH" | tr ' ' '\n' | grep -qx "arm64"; then
-  echo "Release binary is not an arm64 Apple Silicon binary: $BINARY_PATH" >&2
-  lipo -archs "$BINARY_PATH" >&2
-  exit 1
-fi
+  if [[ "${configured_dist_dir}" == /* ]]; then
+    printf '%s\n' "${configured_dist_dir}"
+  else
+    printf '%s\n' "${REPO_ROOT}/${configured_dist_dir}"
+  fi
+}
 
-APP_BUNDLE="$DIST_DIR/$APP_EXECUTABLE.app"
-CONTENTS_DIR="$APP_BUNDLE/Contents"
-MACOS_DIR="$CONTENTS_DIR/MacOS"
-RESOURCES_DIR="$CONTENTS_DIR/Resources"
+require_macos() {
+  local kernel_name
+  kernel_name="$(uname -s)"
 
-mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
-cp "$BINARY_PATH" "$MACOS_DIR/$APP_EXECUTABLE"
-cp -R "$RESOURCE_BUNDLE_PATH" "$APP_BUNDLE/$RESOURCE_BUNDLE"
-chmod 755 "$MACOS_DIR/$APP_EXECUTABLE"
+  if [[ "${kernel_name}" != "Darwin" ]]; then
+    die "macOS release builds must run on macOS; current kernel is ${kernel_name}."
+  fi
+}
 
-cat > "$CONTENTS_DIR/Info.plist" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleDevelopmentRegion</key>
-  <string>en</string>
-  <key>CFBundleDisplayName</key>
-  <string>$APP_DISPLAY_NAME</string>
-  <key>CFBundleExecutable</key>
-  <string>$APP_EXECUTABLE</string>
-  <key>CFBundleIdentifier</key>
-  <string>$BUNDLE_IDENTIFIER</string>
-  <key>CFBundleInfoDictionaryVersion</key>
-  <string>6.0</string>
-  <key>CFBundleName</key>
-  <string>$APP_DISPLAY_NAME</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>CFBundleShortVersionString</key>
-  <string>$APP_VERSION</string>
-  <key>CFBundleVersion</key>
-  <string>$BUILD_NUMBER</string>
-  <key>LSMinimumSystemVersion</key>
-  <string>14.0</string>
-  <key>NSHighResolutionCapable</key>
-  <true/>
-</dict>
-</plist>
-PLIST
+require_flutter() {
+  command -v "${FLUTTER_BIN}" >/dev/null 2>&1 \
+    || die "Flutter executable not found: ${FLUTTER_BIN}"
 
-plutil -lint "$CONTENTS_DIR/Info.plist"
+  command -v ditto >/dev/null 2>&1 \
+    || die "Required macOS packaging tool not found: ditto"
+}
 
-BINARY_ARCHIVE="$DIST_DIR/$APP_EXECUTABLE-macos-arm64-binary.tar.gz"
-tar -czf "$BINARY_ARCHIVE" -C "$(dirname "$BINARY_PATH")" "$APP_EXECUTABLE" "$RESOURCE_BUNDLE"
+resolve_dependencies() {
+  if ! "${FLUTTER_BIN}" pub get 2>&1 \
+    | bash "${REPO_ROOT}/scripts/filter-flutter-pub-get-output.sh"; then
+    die "Flutter dependency resolution failed."
+  fi
+}
 
-DMG_ROOT="$DIST_DIR/dmg-root"
-DMG_PATH="$DIST_DIR/$APP_EXECUTABLE-macos-arm64.dmg"
-mkdir -p "$DMG_ROOT"
-cp -R "$APP_BUNDLE" "$DMG_ROOT/"
-ln -s /Applications "$DMG_ROOT/Applications"
+build_release() {
+  local -a build_args
+  build_args=(build macos --release --no-pub)
 
-hdiutil create \
-  -volname "$APP_DISPLAY_NAME" \
-  -srcfolder "$DMG_ROOT" \
-  -ov \
-  -format UDZO \
-  "$DMG_PATH"
+  if [[ -n "${APP_VERSION:-}" ]]; then
+    build_args+=("--build-name=${APP_VERSION}")
+  fi
 
-echo "Built $BINARY_ARCHIVE"
-echo "Built $DMG_PATH"
+  if [[ -n "${BUILD_NUMBER:-}" ]]; then
+    build_args+=("--build-number=${BUILD_NUMBER}")
+  fi
+
+  "${FLUTTER_BIN}" "${build_args[@]}"
+}
+
+package_release() {
+  local dist_dir="$1"
+  local release_dir="${APP_DIR}/build/macos/Build/Products/Release"
+  local app_bundle="${release_dir}/${APP_BUNDLE_NAME}"
+  local archive_path="${dist_dir}/${ARCHIVE_NAME}"
+
+  [[ -d "${app_bundle}" ]] \
+    || die "Release app bundle not found after build: ${app_bundle}"
+
+  if [[ "${dist_dir}" == "/" || "${dist_dir}" == "${REPO_ROOT}" ]]; then
+    die "Refusing to use unsafe DIST_DIR: ${dist_dir}"
+  fi
+
+  rm -rf "${dist_dir}"
+  mkdir -p "${dist_dir}"
+
+  ditto -c -k --sequesterRsrc --keepParent "${app_bundle}" "${archive_path}"
+  printf 'Built %s\n' "${archive_path}"
+}
+
+main() {
+  local dist_dir
+  dist_dir="$(resolve_dist_dir)"
+
+  require_macos
+  require_flutter
+  cd "${APP_DIR}" || die "Failed to enter Flutter app directory: ${APP_DIR}"
+  resolve_dependencies
+  build_release
+  package_release "${dist_dir}"
+}
+
+main "$@"

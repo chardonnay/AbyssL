@@ -7,26 +7,25 @@
 
 == Purpose
 
-AbyssL Translator is a macOS tool for translation, spelling correction, rewriting, and document processing with local or remote LLMs.
+AbyssL Translator is a Flutter desktop app for translation, spelling correction, rewriting, and document processing with local or remote LLMs.
 It is designed for fast work with text and files:
 
-* Enter text in `Source` or capture selected text from another app with the global shortcut
+* Enter text in `Source` or capture selected text from another app with the global shortcut where the platform adapter supports it
 * Read, edit, and copy the result in `Translation`
 * Rewrite selected translation text with AI alternatives
-* Correct and rewrite longer text in `Spelling Correction` mode
+* Correct and rewrite longer text in `Correction` mode
 * Translate or correct documents through a drop zone, file/folder picker, and batch processing
-* Manage multiple local LLM profiles
 * Use reasoning options from LM Studio metadata when the local server provides them
 
 == Main Window
 
 image::translation-flow.svg[Translation flow, width=900]
 
-The main window has a mode picker at the top:
+The main window uses a navigation rail with these modes:
 
 * `Translator`
-* `Spelling Correction`
-* `Document Translate/Correct`
+* `Correction`
+* `Documents`
 
 In `Translator` mode, the window has these areas:
 
@@ -34,20 +33,26 @@ In `Translator` mode, the window has these areas:
 |===
 | Area | Purpose
 
-| Header
-| Provider, model or LLM profile, reasoning toggle, and `Settings`.
+| App bar
+| App title and `Settings`.
+
+| Language and style row
+| Source language, target language, register, complexity, and spelling controls.
+
+| Direct instruction
+| Optional instruction for the next translation request.
 
 | Source
-| Source text editor. It receives focus when the app starts.
+| Source text editor.
 
 | Translation
 | Target text. The text can be edited, selected, and copied to the clipboard.
 
-| Alternatives
-| AI suggestions. Arrow buttons switch suggestions, and reload generates new suggestions.
+| Synonyms and Alternatives
+| Result chips returned by the provider. Clicking a chip copies that value to the clipboard.
 
 | Status
-| Shows request errors.
+| Shows request errors, cancellation state, and capture adapter status.
 |===
 
 === Source
@@ -59,7 +64,7 @@ Common actions:
 
 * Enter text. If automatic translation is enabled, the app translates after a short debounce.
 * Choose the source language: `Detect language` or a fixed source language.
-* Clear the text with the `xmark.circle` button; this clears Source, Translation, and Alternatives.
+* Clear the text with the clear button; this clears Source, Translation, Synonyms, Alternatives, and status text.
 
 === Translation
 
@@ -68,7 +73,7 @@ Common actions:
 Common actions:
 
 * Choose the target language.
-* Select text and use `AI alternatives`.
+* Select text and use `Alternatives`.
 * Use the copy button to copy the full translation to the clipboard.
 
 == Translating Text
@@ -80,38 +85,38 @@ Input is debounced so a request is not sent for every single character.
 
 === Manual Translation
 
-Start a manual translation with the `Translate` button or `Cmd+Return`.
+Start a manual translation with the `Translate` button.
 
 === Global Capture Shortcut
 
-The app watches a configurable pattern made from a modifier plus a key pressed twice within a short time window.
-The default is `Control+C+C`.
+The app configures a platform capture adapter with a modifier plus one alphanumeric key.
+The default display value is `Ctrl+C`, representing a double-press trigger.
+The current macOS and Windows adapters trigger after two matching key presses in a short time window, for example `Ctrl+C+C`.
 When text is selected in another app:
 
 . Select text.
-. Press the configured shortcut twice quickly, for example `Control+C+C`.
-. The app waits until the modifier is released.
-. The app simulates `Cmd+C` in the source app, waits for a clipboard change, copies the text into `Source`, and starts translation.
-. AbyssL Translator is activated.
+. Trigger the configured capture shortcut according to the current platform adapter.
+. If capture succeeds, the selected text is copied into `Source`.
+. If automatic translation is enabled, AbyssL starts translation immediately.
 
 [NOTE]
 ====
-The global shortcut and simulated copy require macOS Accessibility permission in practice.
-If the shortcut does not work, check `System Settings -> Privacy & Security -> Accessibility` and allow AbyssL Translator.
-Depending on the macOS version, `Input Monitoring` can also be relevant.
-Restart the app after changing these permissions.
+Global capture is platform-dependent.
+On macOS, Accessibility permission and possibly Input Monitoring are required.
+On Windows, the native adapter uses a keyboard hook and clipboard copy.
+On Linux, this build reports capture status and does not claim a generic Wayland/X11 capture path; use manual copy/paste when the adapter reports unsupported behavior.
 ====
 
 === Change the Shortcut
 
-Configure the shortcut in `Settings -> Defaults -> Capture text from another app`.
+Configure the shortcut in `Settings` with `Capture modifier` and `Key`.
 The settings are:
 
 * Modifier: `Control`, `Option`, `Command`, or `Shift`
 * Key: one alphanumeric character
 
-The app interprets the setting as `Modifier+Key+Key`.
-For example, modifier `Option` and key `C` becomes `Option+C+C`.
+The displayed shortcut is `Modifier+Key`.
+The exact global-capture behavior depends on the active platform adapter.
 
 == AI Alternatives and Direct Instructions
 
@@ -120,14 +125,14 @@ image::alternatives-workflow.svg[Alternatives workflow, width=900]
 === Alternatives for Selected Text
 
 . Select a word or sentence in `Translation`.
-. Click `AI alternatives`.
+. Click `Alternatives`.
 . The app requests the configured number of suggestions.
-. Use the arrow buttons in `Alternatives` to switch suggestions.
-. Click a suggestion to apply it in place of the selection.
+. The suggestions appear as chips in `Alternatives`.
+. Click a suggestion chip to copy it to the clipboard.
 
 === Alternatives with a Direct Instruction
 
-The Alternatives area includes an input field for a direct AI instruction.
+The Alternatives area includes an `Alternative instruction` input field after synonyms or alternatives are available.
 Example:
 
 [source,text]
@@ -139,32 +144,28 @@ Behavior:
 
 * If text is selected in `Translation`, only that selection is rewritten.
 * If nothing is selected, the whole current translation is used as the base text.
-* The number of suggestions comes from `Settings -> Defaults -> AI alternatives`.
-* Reload repeats the last applicable alternatives request.
+* The number of suggestions comes from the configured AI alternative count.
 
-=== Apply a Suggestion
+=== Copy a Suggestion
 
-Click the visible suggestion to apply it:
+Click a visible suggestion chip to copy it to the clipboard.
+The current Flutter UI does not automatically replace selected translation text when a suggestion chip is clicked.
 
-* as a replacement for the current selection
-* as a replacement for the whole `Translation` text when no selection is active
+== Correction and Rewriting
 
-== Spelling Correction and Rewriting
-
-`Spelling Correction` mode is intended for longer text that should be corrected or stylistically rewritten.
+`Correction` mode is intended for longer text that should be corrected or stylistically rewritten.
 
 === Correct Text
 
-. Select `Spelling Correction` in the mode picker.
+. Select `Correction` in the navigation rail.
 . Paste or type text into the large editor.
 . Optionally enter a direct AI instruction.
 . Start `Correct`.
 
-The app marks corrected ranges in the text.
-Hovering over a marked range shows a tooltip with the reason for the change.
-Clicking a marked range shows alternatives and allows restoring the original.
+The app marks corrected ranges in the input and output text.
+Issue cards show the original and corrected text, the model-provided message, and alternatives when the response includes them.
 
-The number of correction alternatives is configured in `Settings -> Defaults -> Correction alternatives`.
+The number of correction alternatives is configured in `Settings`.
 The minimum value is 3.
 
 === Rewrite Text
@@ -172,9 +173,10 @@ The minimum value is 3.
 The rewrite button uses the selected style preset and optional direct AI instruction.
 The available style presets are:
 
-* Natural
+* Standard
 * Formal
 * Concise
+* Ultra Short
 
 Example direct instruction:
 
@@ -185,11 +187,11 @@ make the text sound like it is from the 17th century
 
 === Copy Corrected Text
 
-The copy button in `Spelling Correction` mode writes the current corrected text to the clipboard.
+The copy button in `Correction` mode writes the current corrected or rewritten text to the clipboard.
 
 == Translating and Correcting Documents
 
-`Document Translate/Correct` processes files or folders.
+`Documents` processes files or folders.
 Depending on the selected options, it corrects, translates, or does both.
 When both actions are enabled, correction runs first and translation runs afterward.
 
@@ -271,15 +273,12 @@ During document processing, the app shows:
 
 === Open Settings
 
-Open Settings with the gear button or `Cmd+,`.
-The Settings window has two tabs:
+Open Settings with the gear button.
+The current Flutter UI shows one scrollable settings dialog.
 
-* `Connection`
-* `Defaults`
+=== Provider and OpenAI
 
-=== Connection: Provider
-
-`AI Provider` selects the active provider:
+`Provider` selects the active provider:
 
 [cols="1,3", options="header"]
 |===
@@ -292,43 +291,32 @@ The Settings window has two tabs:
 | Uses a local OpenAI-compatible server. The app can also read LM Studio metadata from `/api/v1/models`.
 |===
 
-=== Connection: OpenAI
-
-Fields:
+OpenAI fields:
 
 * API key
 * Host
 * Port
-* HTTPS
+* Protocol
+* OpenAI model
 
-The API key is stored locally in `UserDefaults`.
+API keys are stored with `flutter_secure_storage`.
+If secure storage is unavailable, the app reports the error and does not silently save API keys as plaintext.
 For production use, prefer the most restricted key that still supports the required requests.
 
-=== Connection: Local LLM and Profiles
+=== Local LLM
 
-LLM profiles store local server and model data.
-Each profile contains:
+Local LLM fields:
 
-* Profile name
 * Host
 * Port
-* HTTPS setting
+* Protocol
 * Model name
 * Optional local API key
 
-Actions:
-
-* Select a profile from the picker
-* Edit the profile name
-* Add a profile
-* Delete a profile when more than one profile exists
-
-The selected profile is also available in the main window under the provider controls.
-Switching profiles applies host, port, HTTPS, model, and API key.
-
 === Test Connection and List Local Models
 
-For `Local LLM`, `Test connection` performs these checks:
+Use `Test OpenAI` or `Test Local` to check the configured provider.
+For `Local LLM`, `Detect Local` performs these checks:
 
 . Check the configured local server.
 . Load available LLMs from LM Studio metadata when the server provides it.
@@ -346,13 +334,14 @@ If a local server does not provide this LM Studio metadata path, normal `/v1` co
 
 The app distinguishes between:
 
-* `Reasoning value when ON`
-* `Reasoning value when OFF`
+* `Reasoning value ON`
+* `Reasoning value OFF`
 
-For local LM Studio metadata, `Refresh reasoning options` can load the available values automatically.
+For local LM Studio metadata, `Refresh` can load the available values automatically.
 If no reasoning metadata is present, the app treats the local model as a model without reasoning options.
 
-The local request sends no `reasoning_effort` when reasoning is disabled or the selected value is `none` or `off`.
+The current request configuration uses `Reasoning value ON` when the `Reasoning` chip is selected and `Reasoning value OFF` when it is not selected.
+Provider-specific request handling decides whether a `reasoning_effort` field is sent.
 
 === Local Request Timeout
 
@@ -360,17 +349,16 @@ The local request timeout is configured in seconds.
 The default value is 600 seconds.
 The value `0` disables the app timeout for local LLM requests.
 
-=== Defaults
+=== Other Settings
 
-The `Defaults` tab stores default values:
+The dialog also stores:
 
-* OpenAI model
-* Reasoning toggle
+* Theme mode: `System`, `Light`, or `Dark`
 * Automatic translation while typing
 * Number of AI alternatives, currently limited to 1 through 8
 * Number of correction alternatives, currently limited to 3 through 8
 * Font size for Source, Translation, and Alternatives
-* Shortcut for capturing text from other apps
+* Capture modifier and key
 * Default source language
 * Default target language
 * Register
@@ -442,19 +430,20 @@ The app currently offers these language options:
 
 == Window Behavior
 
-The main-window geometry is saved.
-If the user moves or resizes the main window, that geometry is reused on later launches.
+The Flutter app uses the default desktop window behavior provided by Flutter and the host platform.
+This repository does not currently contain code that persists custom main-window geometry.
 
-The Settings window has a fixed size.
+The Settings UI opens as a scrollable dialog.
 
 == Data Storage
 
-Configuration is stored locally in `UserDefaults`.
+Non-secret configuration is stored locally through `shared_preferences`.
+API keys are stored through `flutter_secure_storage`.
 Stored values include:
 
 * Provider
 * OpenAI connection data
-* Local LLM profiles
+* Local LLM connection data
 * Local request timeout
 * Capture shortcut
 * Languages
@@ -473,32 +462,29 @@ image::architecture.svg[Architecture overview, width=900]
 |===
 | Component | Responsibility
 
-| `MainWindowView`
-| Main window, provider controls, and switching between Translator, Spelling Correction, and Document processing modes.
+| `AbyssLApp`
+| App root, theme mode selection, and `MainShell` setup.
 
-| `SettingsView`
-| Settings, LLM profiles, connection test, and reasoning refresh.
+| `MainShell`
+| Main window state, navigation between Translator, Correction, and Documents, request cancellation, and status display.
 
-| `TranslationViewModel`
-| UI state, debouncing, translation, correction, alternatives, and document tasks.
+| `SettingsDialog`
+| Provider settings, OpenAI and local server fields, connection tests, local model detection, reasoning settings, font size, and capture shortcut settings.
+
+| `AppSettingsStore`
+| Persists non-secret settings with `shared_preferences` and API keys with `flutter_secure_storage`.
+
+| `AbyssLApiClient`
+| OpenAI-compatible client for translation, alternatives, correction, rewriting, local model catalog, and local reasoning metadata.
+
+| `PromptBuilder`
+| Builds provider prompts for translation, alternatives, correction, and rewriting.
 
 | `DocumentProcessingService`
 | Collects, loads, processes, and exports documents.
 
-| `OpenAIService`
-| OpenAI-compatible client for remote chat completions.
-
-| `LocalLLMService`
-| OpenAI-compatible client for local LLMs plus LM Studio metadata.
-
-| `AppSettingsStore`
-| Persists settings in `UserDefaults`.
-
-| `HotkeyManager`
-| Detects the configured global shortcut pattern.
-
-| `PasteboardHelper`
-| Reads and writes the macOS clipboard.
+| `DesktopCaptureService`
+| Bridges Flutter to platform capture adapters through the `org.abyssl.translator/capture` method channel.
 |===
 
 == Build, Run, and Validate
@@ -507,71 +493,41 @@ image::architecture.svg[Architecture overview, width=900]
 
 [source,bash]
 ----
-swift build
-swift run AbyssLTranslator
+cd apps/abyssl_flutter
+flutter pub get
+flutter run -d macos
 ----
+
+Use `flutter run -d windows` or `flutter run -d linux` on matching Windows or Linux hosts.
 
 === Release Build
 
 [source,bash]
 ----
-swift build -c release
-.build/release/AbyssLTranslator
+bash scripts/build-macos-release.sh
 ----
 
-When running the SwiftPM binary directly, keep the resource bundle in the release directory:
+The release helper runs `flutter build macos --release` for `apps/abyssl_flutter` and writes `dist/abyssl_flutter-macos-release.zip`.
 
-* `.build/arm64-apple-macosx/release/AbyssLTranslator`
-* `.build/arm64-apple-macosx/release/AbyssLTranslator_AbyssLTranslator.bundle`
-
-=== Local App Bundle / DMG
-
-A simple local app bundle can be created with system tools.
-The SwiftPM resource bundle must be placed directly under `AbyssLTranslator.app/` because the generated resource accessor looks there.
+Run platform release builds on matching hosts:
 
 [source,bash]
 ----
-swift build -c release
-
-rm -rf dist
-mkdir -p dist/AbyssLTranslator.app/Contents/MacOS
-mkdir -p dist/AbyssLTranslator.app/Contents/Resources
-
-cp .build/arm64-apple-macosx/release/AbyssLTranslator \
-  dist/AbyssLTranslator.app/Contents/MacOS/
-
-cp -R .build/arm64-apple-macosx/release/AbyssLTranslator_AbyssLTranslator.bundle \
-  dist/AbyssLTranslator.app/
-----
-
-Then add a suitable `Info.plist` at `dist/AbyssLTranslator.app/Contents/Info.plist`, sign locally, and create the DMG:
-
-[source,bash]
-----
-chmod +x dist/AbyssLTranslator.app/Contents/MacOS/AbyssLTranslator
-codesign --force --deep --sign - dist/AbyssLTranslator.app
-
-mkdir -p dist/dmg-root
-cp -R dist/AbyssLTranslator.app dist/dmg-root/
-ln -s /Applications dist/dmg-root/Applications
-
-hdiutil create \
-  -volname "AbyssL Translator" \
-  -srcfolder dist/dmg-root \
-  -ov \
-  -format UDZO \
-  dist/AbyssLTranslator.dmg
+flutter build windows --release
+flutter build linux --release
 ----
 
 === Validate After Changes
 
 [source,bash]
 ----
-swift build
+cd apps/abyssl_flutter
+flutter analyze
+flutter test
+flutter build macos --debug
 ----
 
-If tests are added later, run `swift test`.
-This package currently has no `Tests` target.
+Validate Windows and Linux builds on their matching hosts with `flutter build windows --debug` and `flutter build linux --debug`.
 
 == Troubleshooting
 

@@ -37,6 +37,7 @@ class FlutterWindow : public Win32Window {
   void JoinCaptureThreads();
   void HandleHotKey();
   void HandleKeyEvent(DWORD vk_code);
+  // Returns an empty string when no text was copied or clipboard access fails.
   static std::string CopySelectionFromForegroundWindow();
   UINT KeyCode() const;
   bool ModifierPressed() const;
@@ -46,11 +47,14 @@ class FlutterWindow : public Win32Window {
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
-  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> capture_channel_;
+  std::shared_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      capture_channel_;
+  std::mutex capture_channel_mutex_;
   std::string capture_modifier_ = "control";
   std::string capture_key_ = "c";
   HHOOK keyboard_hook_ = nullptr;
   std::chrono::steady_clock::time_point last_hotkey_time_;
+  std::mutex last_hotkey_time_mutex_;
   std::shared_ptr<std::atomic_bool> alive_ =
       std::make_shared<std::atomic_bool>(true);
   std::mutex capture_threads_mutex_;

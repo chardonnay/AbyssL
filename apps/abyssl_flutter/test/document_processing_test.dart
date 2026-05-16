@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
@@ -114,7 +115,7 @@ void main() {
           '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"/>',
       'xl/sharedStrings.xml': '''
 <sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<si><t>Name</t></si><si><t>Value</t></si><si><t>Alpha</t></si>
+<si><t>Name</t></si><si><t>Value</t></si><si><t>Älpha</t></si>
 </sst>
 ''',
       'xl/worksheets/sheet1.xml': '''
@@ -132,14 +133,27 @@ void main() {
     );
 
     expect(document.plainText, contains('Name\tValue'));
-    expect(document.plainText, contains('Alpha\t42'));
+    expect(document.plainText, contains('Älpha\t42'));
+  });
+
+  test('limits spreadsheet export formats to compatible outputs', () {
+    expect(
+      DocumentProcessingService.availableExportFormats(
+        hasSpreadsheetInput: true,
+      ),
+      [
+        DocumentExportFormat.pdf,
+        DocumentExportFormat.html,
+        DocumentExportFormat.plainText,
+      ],
+    );
   });
 }
 
 Future<void> _writeZip(String path, Map<String, String> entries) async {
   final archive = Archive();
   for (final entry in entries.entries) {
-    final bytes = entry.value.codeUnits;
+    final bytes = utf8.encode(entry.value);
     archive.addFile(ArchiveFile(entry.key, bytes.length, bytes));
   }
   await File(path).writeAsBytes(ZipEncoder().encode(archive));
