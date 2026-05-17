@@ -16,6 +16,11 @@ class MainFlutterWindow: NSWindow {
     self.setFrame(windowFrame, display: true)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
-    (NSApplication.shared.delegate as? AppDelegate)?.configureChannels(for: flutterViewController)
+    guard let appDelegate = NSApplication.shared.delegate as? AppDelegate else {
+      NSLog("Unable to configure Flutter platform channels: NSApplication.shared.delegate is not AppDelegate.")
+      assertionFailure("AppDelegate type mismatch; configureChannels(for:) could not be called.")
+      return
+    }
+    appDelegate.configureChannels(for: flutterViewController)
   }
 }

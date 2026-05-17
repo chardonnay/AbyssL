@@ -1,7 +1,6 @@
 # AbyssL Flutter
 
-Flutter desktop port of AbyssL Translator for macOS, Windows, and Linux.
-The existing SwiftUI/AppKit app remains the reference implementation while this app reaches production parity.
+Current Flutter desktop implementation of AbyssL Translator for macOS, Windows, and Linux.
 
 ## Implemented scope
 
@@ -22,6 +21,12 @@ The existing SwiftUI/AppKit app remains the reference implementation while this 
 flutter analyze
 flutter test
 flutter build macos --debug
+```
+
+The repository macOS release helper runs the Flutter build from the repo root:
+
+```bash
+bash scripts/build-macos-release.sh
 ```
 
 Windows and Linux builds must be validated on their respective hosts:

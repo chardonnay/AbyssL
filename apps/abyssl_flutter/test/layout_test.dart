@@ -116,6 +116,29 @@ void main() {
     );
   });
 
+  testWidgets('translator swap button exchanges source and target languages', (
+    tester,
+  ) async {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferencesWithCache.create(
+      cacheOptions: const SharedPreferencesWithCacheOptions(),
+    );
+    final settings = AppSettingsStore(preferences: preferences);
+    settings.update((settings) {
+      settings.sourceLanguage = TranslationLanguage.german;
+      settings.targetLanguage = TranslationLanguage.englishUK;
+    });
+
+    await tester.pumpWidget(AbyssLApp(settings: settings));
+    await tester.tap(find.byTooltip('Swap source and target languages'));
+    await tester.pump();
+
+    expect(settings.sourceLanguage, TranslationLanguage.englishUK);
+    expect(settings.targetLanguage, TranslationLanguage.german);
+  });
+
   testWidgets('appearance selector fits the narrow startup window', (
     tester,
   ) async {

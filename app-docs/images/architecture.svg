@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1180" height="540" viewBox="0 0 1180 540" role="img" aria-labelledby="title desc">
   <title id="title">AbyssL Translator Architecture</title>
-  <desc id="desc">App layers with SwiftUI views, ViewModel, LLM services, document service, settings, and macOS integration.</desc>
+  <desc id="desc">Flutter app layers with UI, state, settings, API client, document processing, desktop capture, and OpenAI-compatible endpoints.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#4a5568"/>
@@ -18,38 +18,38 @@
   </defs>
 
   <rect x="30" y="30" width="1120" height="90" class="layer"/>
-  <text x="55" y="65" class="text">SwiftUI UI</text>
+  <text x="55" y="65" class="text">Flutter UI</text>
   <rect x="180" y="48" width="195" height="52" class="ui"/>
-  <text x="277" y="80" text-anchor="middle" class="small">MainWindowView</text>
+  <text x="277" y="80" text-anchor="middle" class="small">MainShell</text>
   <rect x="410" y="48" width="190" height="52" class="ui"/>
-  <text x="505" y="80" text-anchor="middle" class="small">SettingsView</text>
+  <text x="505" y="80" text-anchor="middle" class="small">SettingsDialog</text>
   <rect x="635" y="48" width="235" height="52" class="ui"/>
-  <text x="752" y="80" text-anchor="middle" class="small">TextEditor Components</text>
+  <text x="752" y="80" text-anchor="middle" class="small">Text fields and chips</text>
   <rect x="905" y="48" width="185" height="52" class="ui"/>
   <text x="997" y="80" text-anchor="middle" class="small">Document View</text>
 
   <rect x="30" y="155" width="1120" height="95" class="layer"/>
   <text x="55" y="190" class="text">State and Persistence</text>
   <rect x="220" y="176" width="285" height="52" class="state"/>
-  <text x="362" y="208" text-anchor="middle" class="small">TranslationViewModel</text>
+  <text x="362" y="208" text-anchor="middle" class="small">MainShell state</text>
   <rect x="610" y="176" width="285" height="52" class="state"/>
-  <text x="752" y="208" text-anchor="middle" class="small">AppSettingsStore / UserDefaults</text>
+  <text x="752" y="208" text-anchor="middle" class="small">AppSettingsStore / prefs + secure storage</text>
 
   <rect x="30" y="285" width="1120" height="95" class="layer"/>
   <text x="55" y="320" class="text">Services</text>
   <rect x="205" y="306" width="220" height="52" class="service"/>
-  <text x="315" y="338" text-anchor="middle" class="small">OpenAIService</text>
+  <text x="315" y="338" text-anchor="middle" class="small">AbyssLApiClient</text>
   <rect x="485" y="306" width="220" height="52" class="service"/>
-  <text x="595" y="338" text-anchor="middle" class="small">LocalLLMService</text>
+  <text x="595" y="338" text-anchor="middle" class="small">PromptBuilder</text>
   <rect x="765" y="306" width="285" height="52" class="service"/>
   <text x="907" y="338" text-anchor="middle" class="small">DocumentProcessingService</text>
 
   <rect x="30" y="415" width="1120" height="95" class="layer"/>
-  <text x="55" y="450" class="text">macOS and Network</text>
+  <text x="55" y="450" class="text">Desktop and Network</text>
   <rect x="180" y="436" width="210" height="52" class="system"/>
-  <text x="285" y="468" text-anchor="middle" class="small">HotkeyManager</text>
+  <text x="285" y="468" text-anchor="middle" class="small">DesktopCaptureService</text>
   <rect x="450" y="436" width="210" height="52" class="system"/>
-  <text x="555" y="468" text-anchor="middle" class="small">PasteboardHelper</text>
+  <text x="555" y="468" text-anchor="middle" class="small">Platform adapters</text>
   <rect x="720" y="436" width="280" height="52" class="system"/>
   <text x="860" y="468" text-anchor="middle" class="small">OpenAI-compatible endpoints</text>
 

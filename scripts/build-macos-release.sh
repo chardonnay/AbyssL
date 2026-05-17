@@ -29,6 +29,17 @@ resolve_dist_dir() {
   fi
 }
 
+canonicalize_dist_dir() {
+  local dist_dir="$1"
+
+  mkdir -p "${dist_dir}" \
+    || die "Failed to prepare DIST_DIR for safety check: ${dist_dir}"
+
+  cd "${dist_dir}" \
+    || die "Failed to enter DIST_DIR for safety check: ${dist_dir}"
+  pwd -P
+}
+
 require_macos() {
   local kernel_name
   kernel_name="$(uname -s)"
@@ -72,17 +83,26 @@ package_release() {
   local dist_dir="$1"
   local release_dir="${APP_DIR}/build/macos/Build/Products/Release"
   local app_bundle="${release_dir}/${APP_BUNDLE_NAME}"
-  local archive_path="${dist_dir}/${ARCHIVE_NAME}"
+  local canonical_dist_dir
+  local canonical_repo_root
+  local archive_path
 
   [[ -d "${app_bundle}" ]] \
     || die "Release app bundle not found after build: ${app_bundle}"
 
-  if [[ "${dist_dir}" == "/" || "${dist_dir}" == "${REPO_ROOT}" ]]; then
+  canonical_dist_dir="$(canonicalize_dist_dir "${dist_dir}")"
+  canonical_repo_root="$(cd "${REPO_ROOT}" && pwd -P)" \
+    || die "Failed to resolve repository root: ${REPO_ROOT}"
+
+  if [[ "${canonical_dist_dir}" == "/" ||
+    "${canonical_dist_dir}" == "${canonical_repo_root}" ]]; then
     die "Refusing to use unsafe DIST_DIR: ${dist_dir}"
   fi
 
-  rm -rf "${dist_dir}"
-  mkdir -p "${dist_dir}"
+  archive_path="${canonical_dist_dir}/${ARCHIVE_NAME}"
+
+  rm -rf "${canonical_dist_dir}"
+  mkdir -p "${canonical_dist_dir}"
 
   ditto -c -k --sequesterRsrc --keepParent "${app_bundle}" "${archive_path}"
   printf 'Built %s\n' "${archive_path}"

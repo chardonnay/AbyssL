@@ -508,6 +508,18 @@ class _MainShellState extends State<MainShell> {
     });
   }
 
+  bool get _canSwapTranslatorLanguages =>
+      widget.settings.sourceLanguage != TranslationLanguage.automatic;
+
+  void _swapTranslatorLanguages() {
+    if (!_canSwapTranslatorLanguages) return;
+    widget.settings.update((settings) {
+      final source = settings.sourceLanguage;
+      settings.sourceLanguage = settings.targetLanguage;
+      settings.targetLanguage = source;
+    });
+  }
+
   void _clearCorrectionTexts() {
     setState(() {
       _correctionInputController.clear();
@@ -828,7 +840,19 @@ class _MainShellState extends State<MainShell> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
+                Center(
+                  child: IconButton.outlined(
+                    tooltip: _canSwapTranslatorLanguages
+                        ? 'Swap source and target languages'
+                        : 'Choose a fixed source language to swap languages',
+                    onPressed: _isBusy || !_canSwapTranslatorLanguages
+                        ? null
+                        : _swapTranslatorLanguages,
+                    icon: const Icon(Icons.swap_horiz),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
                     controller: _translationController,

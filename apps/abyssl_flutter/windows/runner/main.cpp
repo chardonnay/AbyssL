@@ -17,7 +17,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // plugins.
   const HRESULT com_result =
       ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-  const bool should_uninitialize_com = SUCCEEDED(com_result);
+  bool should_uninitialize_com = false;
+  if (SUCCEEDED(com_result)) {
+    should_uninitialize_com = true;
+  } else if (com_result == RPC_E_CHANGED_MODE) {
+    ::OutputDebugStringW(
+        L"COM is already initialized with a different threading model; "
+        L"continuing without CoUninitialize.\n");
+  }
 
   flutter::DartProject project(L"data");
 
