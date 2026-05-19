@@ -42,6 +42,27 @@ void main() {
     expect(reloaded.reasoningEnabled, isTrue);
     expect(reloaded.reasoningOptionsForModel('qwen3-8b-loaded'), ['off', 'on']);
   });
+
+  test('persists auto translate setting independently', () async {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    SharedPreferences.setMockInitialValues({});
+    final secureStorage = _MemorySecureStorage();
+    final preferences = await SharedPreferencesWithCache.create(
+      cacheOptions: const SharedPreferencesWithCacheOptions(),
+    );
+    final settings = AppSettingsStore(
+      preferences: preferences,
+      secureStorage: secureStorage,
+    );
+
+    settings.update((settings) => settings.autoTranslateEnabled = false);
+    await settings.saveAutoTranslateEnabled();
+
+    final reloaded = await AppSettingsStore.load(secureStorage: secureStorage);
+
+    expect(reloaded.autoTranslateEnabled, isFalse);
+  });
 }
 
 // Test double for secure storage; secrets are not under test here.

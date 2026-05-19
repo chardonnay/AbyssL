@@ -471,6 +471,28 @@ class _MainShellState extends State<MainShell> {
     });
   }
 
+  void _setAutoTranslateEnabled(bool enabled) {
+    if (!enabled) {
+      _autoTranslateTimer?.cancel();
+    }
+    widget.settings.update(
+      (settings) => settings.autoTranslateEnabled = enabled,
+    );
+    unawaited(_saveAutoTranslateEnabled());
+  }
+
+  Future<void> _saveAutoTranslateEnabled() async {
+    try {
+      await widget.settings.saveAutoTranslateEnabled();
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _status = 'Auto translate setting was not saved: $error',
+        );
+      }
+    }
+  }
+
   Future<void> _translateNow() => _runBusy(() async {
     final result = await _apiClient.translate(
       text: _sourceController.text,
@@ -877,6 +899,7 @@ class _MainShellState extends State<MainShell> {
                 icon: const Icon(Icons.translate),
                 label: const Text('Translate'),
               ),
+              _autoTranslateSwitch(),
               if (_isBusy) _cancelRequestButton(),
               OutlinedButton.icon(
                 onPressed: _translationController.text.trim().isEmpty || _isBusy
@@ -938,6 +961,26 @@ class _MainShellState extends State<MainShell> {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _autoTranslateSwitch() {
+    return Tooltip(
+      message: widget.settings.autoTranslateEnabled
+          ? 'Auto translate after Source changes'
+          : 'Manual translation only',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('Auto translate'),
+          const SizedBox(width: 4),
+          Switch(
+            key: const ValueKey('auto-translate-switch'),
+            value: widget.settings.autoTranslateEnabled,
+            onChanged: _setAutoTranslateEnabled,
+          ),
         ],
       ),
     );

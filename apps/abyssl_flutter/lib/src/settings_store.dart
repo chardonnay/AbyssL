@@ -385,6 +385,10 @@ class AppSettingsStore extends ChangeNotifier {
     }
   }
 
+  Future<void> saveAutoTranslateEnabled() async {
+    await _preferences.setBool(_autoTranslateKey, autoTranslateEnabled);
+  }
+
   Future<void> _persistSecret(String key, String value) async {
     if (value.trim().isEmpty) {
       await _secureStorage.delete(key: key);

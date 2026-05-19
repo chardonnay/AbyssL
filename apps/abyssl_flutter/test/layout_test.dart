@@ -139,6 +139,51 @@ void main() {
     expect(settings.targetLanguage, TranslationLanguage.german);
   });
 
+  testWidgets('auto translate switch controls source-change translations', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1250, 763);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferencesWithCache.create(
+      cacheOptions: const SharedPreferencesWithCacheOptions(),
+    );
+    final settings = AppSettingsStore(preferences: preferences);
+    final apiClient = _RecordingTranslateApiClient();
+
+    await tester.pumpWidget(
+      AbyssLApp(settings: settings, apiClient: apiClient),
+    );
+    await tester.enterText(find.widgetWithText(TextField, 'Source'), 'hello');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byKey(const ValueKey('auto-translate-switch')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(settings.autoTranslateEnabled, isFalse);
+    expect(apiClient.translateCalls, isEmpty);
+
+    await tester.tap(find.text('Translate'));
+    await tester.pumpAndSettle();
+
+    expect(apiClient.translateCalls, ['hello']);
+    expect(find.text('translated hello'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('auto-translate-switch')));
+    await tester.pump();
+    await tester.enterText(find.widgetWithText(TextField, 'Source'), 'next');
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+
+    expect(settings.autoTranslateEnabled, isTrue);
+    expect(apiClient.translateCalls, ['hello', 'next']);
+  });
+
   testWidgets('appearance selector fits the narrow startup window', (
     tester,
   ) async {
@@ -442,6 +487,29 @@ class _FakeStartupApiClient extends AbyssLApiClient {
       allowedOptions: ['off', 'on'],
       defaultOption: 'on',
       resolvedModelName: 'qwen3-8b-loaded',
+    );
+  }
+
+  @override
+  void close() {}
+}
+
+// Test double for translator requests.
+class _RecordingTranslateApiClient extends AbyssLApiClient {
+  final translateCalls = <String>[];
+
+  @override
+  Future<TranslationAIResult> translate({
+    required String text,
+    required String instruction,
+    required ProviderRequestConfig config,
+  }) async {
+    translateCalls.add(text);
+    return TranslationAIResult(
+      translation: 'translated $text',
+      synonyms: const [],
+      spellingNotes: null,
+      revisedSource: null,
     );
   }
 
