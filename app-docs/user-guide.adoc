@@ -509,6 +509,13 @@ bash scripts/build-macos-release.sh
 
 The release helper runs `flutter build macos --release` for `apps/abyssl_flutter` and writes `dist/abyssl_flutter-macos-release.zip`.
 
+For published macOS updates, push a stable tag in the form `vMAJOR.MINOR.PATCH`.
+The GitHub workflow requires the repository secret `SPARKLE_PRIVATE_KEY`, signs
+the update archive with Sparkle's Ed25519 key, generates `appcast.xml`, and
+publishes both files to the matching GitHub Release. Users can then open
+`Settings > About`, select `Check for updates`, and let the native macOS updater
+download, verify, install, and relaunch AbyssL.
+
 Run platform release builds on matching hosts:
 
 [source,bash]

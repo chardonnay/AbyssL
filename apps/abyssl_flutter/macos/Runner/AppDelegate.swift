@@ -3,11 +3,18 @@ import FlutterMacOS
 import ApplicationServices
 import Carbon.HIToolbox
 import PDFKit
+import Sparkle
 
 @main
 class AppDelegate: FlutterAppDelegate {
   private var channel: FlutterMethodChannel?
   private var documentChannel: FlutterMethodChannel?
+  private var updateChannel: FlutterMethodChannel?
+  private lazy var updaterController = SPUStandardUpdaterController(
+    startingUpdater: true,
+    updaterDelegate: nil,
+    userDriverDelegate: nil
+  )
   private var monitor: Any?
   private var shortcutModifier = "control"
   private var shortcutKey = "c"
@@ -16,6 +23,7 @@ class AppDelegate: FlutterAppDelegate {
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
     super.applicationDidFinishLaunching(notification)
+    _ = updaterController
     if let controller = mainFlutterWindow?.contentViewController as? FlutterViewController {
       configureChannels(for: controller)
     }
@@ -23,25 +31,34 @@ class AppDelegate: FlutterAppDelegate {
   }
 
   func configureChannels(for controller: FlutterViewController) {
-    guard channel == nil || documentChannel == nil else { return }
-    let channel = FlutterMethodChannel(
-      name: "org.abyssl.translator/capture",
-      binaryMessenger: controller.engine.binaryMessenger
-    )
     if self.channel == nil {
+      let channel = FlutterMethodChannel(
+        name: "org.abyssl.translator/capture",
+        binaryMessenger: controller.engine.binaryMessenger
+      )
       self.channel = channel
       channel.setMethodCallHandler { [weak self] call, result in
         self?.handle(call: call, result: result)
       }
     }
-    let documentChannel = FlutterMethodChannel(
-      name: "org.abyssl.translator/document",
-      binaryMessenger: controller.engine.binaryMessenger
-    )
     if self.documentChannel == nil {
+      let documentChannel = FlutterMethodChannel(
+        name: "org.abyssl.translator/document",
+        binaryMessenger: controller.engine.binaryMessenger
+      )
       self.documentChannel = documentChannel
       documentChannel.setMethodCallHandler { [weak self] call, result in
         self?.handleDocument(call: call, result: result)
+      }
+    }
+    if self.updateChannel == nil {
+      let updateChannel = FlutterMethodChannel(
+        name: "org.abyssl.translator/update",
+        binaryMessenger: controller.engine.binaryMessenger
+      )
+      self.updateChannel = updateChannel
+      updateChannel.setMethodCallHandler { [weak self] call, result in
+        self?.handleUpdate(call: call, result: result)
       }
     }
   }
@@ -113,6 +130,28 @@ class AppDelegate: FlutterAppDelegate {
         }
       }
       result(chunks.joined(separator: "\n\n"))
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  private func handleUpdate(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    switch call.method {
+    case "checkForUpdates":
+      guard updaterController.updater.canCheckForUpdates else {
+        result(
+          FlutterError(
+            code: "updater-not-ready",
+            message: "The macOS updater is not ready yet. Please try again in a moment.",
+            details: nil
+          )
+        )
+        return
+      }
+      updaterController.checkForUpdates(nil)
+      result(nil)
+    case "canCheckForUpdates":
+      result(updaterController.updater.canCheckForUpdates)
     default:
       result(FlutterMethodNotImplemented)
     }

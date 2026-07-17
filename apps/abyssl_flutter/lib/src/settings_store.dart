@@ -16,7 +16,7 @@ class AppSettingsStore extends ChangeNotifier {
   }) : _preferences = preferences,
        _secureStorage = secureStorage;
 
-  static const defaultEditorFontSize = 13.0;
+  static const defaultEditorFontSize = 15.0;
   static const minimumEditorFontSize = 10.0;
   static const maximumEditorFontSize = 28.0;
   static const minimumCorrectionAlternativeCount = 3;

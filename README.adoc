@@ -79,6 +79,23 @@ bash scripts/build-macos-release.sh
 
 The helper builds `apps/abyssl_flutter` with `flutter build macos --release` and writes `dist/abyssl_flutter-macos-release.zip`.
 
+=== Signed GitHub Updates
+
+The macOS app uses Sparkle 2.9.4 for sandbox-compatible, signed self-updates. The
+public Ed25519 key is embedded in the app; the private key remains in the macOS
+Keychain under the account `org.abyssl.abysslFlutter` and must never be committed.
+
+The repository secret `SPARKLE_PRIVATE_KEY` must contain the private key exported
+by Sparkle's `generate_keys` tool. A `vMAJOR.MINOR.PATCH` tag then makes
+`.github/workflows/build-macos.yml` build the universal app, generate a signed
+`appcast.xml`, and publish both files as GitHub Release assets. The app reads the
+stable feed at:
+
+`https://github.com/chardonnay/AbyssL/releases/latest/download/appcast.xml`
+
+The first Sparkle-enabled release must be installed manually. Following releases
+can be checked and installed from `Settings > About`.
+
 == Validate
 
 [source,bash]

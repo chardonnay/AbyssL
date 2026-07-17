@@ -1,0 +1,15 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>abyssl_flutter</title>
+        <item>
+            <title>1.0.0</title>
+            <pubDate>Fri, 17 Jul 2026 22:39:56 +0200</pubDate>
+            <link>https://chardonnay.github.io/AbyssL/</link>
+            <sparkle:version>1</sparkle:version>
+            <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>10.15</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/chardonnay/AbyssL/releases/download/v1.0.0/abyssl_flutter-macos-release.zip" length="20462222" type="application/octet-stream" sparkle:edSignature="lj2IfnKVZ6Ty0t1BqA/dUPvF0EhhIp1P0D5cWt4D+F1Dh4ssTCg9sVQcDjV2Og57n80qhB061crD+xrfAVydBw=="/>
+        </item>
+    </channel>
+</rss>

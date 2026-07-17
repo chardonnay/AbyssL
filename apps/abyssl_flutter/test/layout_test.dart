@@ -1,9 +1,11 @@
 import 'package:abyssl_flutter/main.dart';
+import 'package:abyssl_flutter/src/app_update.dart';
 import 'package:abyssl_flutter/src/models.dart';
 import 'package:abyssl_flutter/src/openai_client.dart';
 import 'package:abyssl_flutter/src/settings_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pub_semver/pub_semver.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
@@ -35,6 +37,192 @@ void main() {
 
     await tester.pumpWidget(AbyssLApp(settings: settings));
     await tester.pumpAndSettle();
+
+    final exception = tester.takeException();
+    expect(
+      exception,
+      isNull,
+      reason: flutterErrors.map((details) => details.toString()).join('\n'),
+    );
+  });
+
+  testWidgets('design 5 translator keeps source, bridge, and result ordered', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1487, 1058);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferencesWithCache.create(
+      cacheOptions: const SharedPreferencesWithCacheOptions(),
+    );
+    final settings = AppSettingsStore(preferences: preferences);
+
+    await tester.pumpWidget(AbyssLApp(settings: settings));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('command-bar')), findsOneWidget);
+    expect(find.byKey(const ValueKey('workspace-rail')), findsOneWidget);
+    expect(find.byKey(const ValueKey('source-editor')), findsOneWidget);
+    expect(find.byKey(const ValueKey('translation-editor')), findsOneWidget);
+
+    final source = tester.getRect(
+      find.byKey(const ValueKey('translator-source-pane')),
+    );
+    final bridge = tester.getRect(
+      find.byKey(const ValueKey('translation-bridge')),
+    );
+    final result = tester.getRect(
+      find.byKey(const ValueKey('translator-result-pane')),
+    );
+    expect(source.bottom, lessThan(bridge.top));
+    expect(bridge.bottom, lessThan(result.top));
+    expect(source.height / result.height, closeTo(58 / 42, 0.02));
+    expect(result.bottom, closeTo(1042, 1));
+  });
+
+  testWidgets('style popover exposes translation controls', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1250, 763);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferencesWithCache.create(
+      cacheOptions: const SharedPreferencesWithCacheOptions(),
+    );
+    final settings = AppSettingsStore(preferences: preferences);
+
+    await tester.pumpWidget(AbyssLApp(settings: settings));
+    await tester.tap(find.byKey(const ValueKey('style-trigger')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('style-popover')), findsOneWidget);
+    expect(find.text('Register'), findsOneWidget);
+    expect(find.text('Complexity'), findsOneWidget);
+    expect(find.text('Spelling'), findsOneWidget);
+    expect(find.text('Reset to defaults'), findsOneWidget);
+  });
+
+  testWidgets('workspace panes follow live desktop window resizing', (
+    tester,
+  ) async {
+    final flutterErrors = <FlutterErrorDetails>[];
+    final previousOnError = FlutterError.onError;
+    FlutterError.onError = (details) {
+      flutterErrors.add(details);
+      previousOnError?.call(details);
+    };
+    addTearDown(() => FlutterError.onError = previousOnError);
+
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1250, 763);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferencesWithCache.create(
+      cacheOptions: const SharedPreferencesWithCacheOptions(),
+    );
+    final settings = AppSettingsStore(preferences: preferences);
+
+    await tester.pumpWidget(AbyssLApp(settings: settings));
+    await tester.pumpAndSettle();
+    final initialSource = tester.getRect(
+      find.byKey(const ValueKey('translator-source-pane')),
+    );
+    final initialResult = tester.getRect(
+      find.byKey(const ValueKey('translator-result-pane')),
+    );
+
+    tester.view.physicalSize = const Size(1800, 1300);
+    await tester.pumpAndSettle();
+    final expandedSource = tester.getRect(
+      find.byKey(const ValueKey('translator-source-pane')),
+    );
+    final expandedResult = tester.getRect(
+      find.byKey(const ValueKey('translator-result-pane')),
+    );
+
+    expect(expandedSource.width, greaterThan(initialSource.width + 500));
+    expect(expandedSource.height, greaterThan(initialSource.height + 300));
+    expect(expandedResult.width, greaterThan(initialResult.width + 500));
+    expect(expandedResult.height, greaterThan(initialResult.height + 200));
+    expect(expandedSource.right, closeTo(1780, 1));
+    expect(expandedResult.bottom, closeTo(1284, 1));
+
+    await tester.tap(find.byKey(const ValueKey('nav-correction')));
+    await tester.pumpAndSettle();
+    final correctionResult = tester.getRect(
+      find.byKey(const ValueKey('correction-result-pane')),
+    );
+    expect(correctionResult.right, closeTo(1780, 1));
+    expect(correctionResult.bottom, closeTo(1284, 1));
+
+    await tester.tap(find.byKey(const ValueKey('nav-documents')));
+    await tester.pumpAndSettle();
+    final documentResult = tester.getRect(
+      find.byKey(const ValueKey('document-results-pane')),
+    );
+    expect(documentResult.right, closeTo(1780, 1));
+    expect(documentResult.bottom, closeTo(1284, 1));
+
+    final exception = tester.takeException();
+    expect(
+      exception,
+      isNull,
+      reason: flutterErrors.map((details) => details.toString()).join('\n'),
+    );
+  });
+
+  testWidgets('correction, documents, and settings fit narrow window', (
+    tester,
+  ) async {
+    final flutterErrors = <FlutterErrorDetails>[];
+    final previousOnError = FlutterError.onError;
+    FlutterError.onError = (details) {
+      flutterErrors.add(details);
+      previousOnError?.call(details);
+    };
+    addTearDown(() => FlutterError.onError = previousOnError);
+
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(736, 558);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferencesWithCache.create(
+      cacheOptions: const SharedPreferencesWithCacheOptions(),
+    );
+    final settings = AppSettingsStore(preferences: preferences);
+
+    await tester.pumpWidget(AbyssLApp(settings: settings));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nav-correction')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('correction-source-pane')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('nav-documents')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('document-intake-pane')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('nav-settings')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('settings-dialog')), findsOneWidget);
 
     final exception = tester.takeException();
     expect(
@@ -76,6 +264,8 @@ void main() {
     expect(find.text('System'), findsOneWidget);
     expect(find.text('Light'), findsOneWidget);
     expect(find.text('Dark'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('settings-section-2')));
+    await tester.pumpAndSettle();
     expect(find.text('Detect Local'), findsOneWidget);
     expect(find.text('Refresh'), findsOneWidget);
     final exception = tester.takeException();
@@ -159,7 +349,10 @@ void main() {
     await tester.pumpWidget(
       AbyssLApp(settings: settings, apiClient: apiClient),
     );
-    await tester.enterText(find.widgetWithText(TextField, 'Source'), 'hello');
+    await tester.enterText(
+      find.byKey(const ValueKey('source-editor')),
+      'hello',
+    );
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.byKey(const ValueKey('auto-translate-switch')));
     await tester.pump();
@@ -168,7 +361,7 @@ void main() {
     expect(settings.autoTranslateEnabled, isFalse);
     expect(apiClient.translateCalls, isEmpty);
 
-    await tester.tap(find.text('Translate'));
+    await tester.tap(find.byKey(const ValueKey('translate-primary')));
     await tester.pumpAndSettle();
 
     expect(apiClient.translateCalls, ['hello']);
@@ -176,7 +369,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('auto-translate-switch')));
     await tester.pump();
-    await tester.enterText(find.widgetWithText(TextField, 'Source'), 'next');
+    await tester.enterText(find.byKey(const ValueKey('source-editor')), 'next');
     await tester.pump(const Duration(milliseconds: 700));
     await tester.pumpAndSettle();
 
@@ -313,9 +506,12 @@ void main() {
     final settings = AppSettingsStore(preferences: preferences);
 
     await tester.pumpWidget(AbyssLApp(settings: settings));
-    await tester.enterText(find.widgetWithText(TextField, 'Source'), 'source');
     await tester.enterText(
-      find.widgetWithText(TextField, 'Translation'),
+      find.byKey(const ValueKey('source-editor')),
+      'source',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('translation-editor')),
       'translation',
     );
     await tester.tap(find.byTooltip('Clear source and translation'));
@@ -342,11 +538,14 @@ void main() {
     final settings = AppSettingsStore(preferences: preferences);
 
     await tester.pumpWidget(AbyssLApp(settings: settings));
-    await tester.tap(find.text('Correction'));
+    await tester.tap(find.byKey(const ValueKey('nav-correction')));
     await tester.pumpAndSettle();
-    await tester.enterText(find.widgetWithText(TextField, 'Input'), 'input');
     await tester.enterText(
-      find.widgetWithText(TextField, 'Corrected / rewritten text'),
+      find.byKey(const ValueKey('correction-input-editor')),
+      'input',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('correction-output-editor')),
       'output',
     );
     await tester.tap(find.byTooltip('Clear input and correction'));
@@ -376,10 +575,10 @@ void main() {
     await tester.pumpWidget(
       AbyssLApp(settings: settings, apiClient: apiClient),
     );
-    await tester.tap(find.text('Correction'));
+    await tester.tap(find.byKey(const ValueKey('nav-correction')));
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.widgetWithText(TextField, 'Input'),
+      find.byKey(const ValueKey('correction-input-editor')),
       'Original long text.',
     );
 
@@ -449,6 +648,72 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Substantivform falsch'), findsOneWidget);
+    final exception = tester.takeException();
+    expect(
+      exception,
+      isNull,
+      reason: flutterErrors.map((details) => details.toString()).join('\n'),
+    );
+  });
+
+  testWidgets('about shows app details and offers a signed GitHub update', (
+    tester,
+  ) async {
+    final flutterErrors = <FlutterErrorDetails>[];
+    final previousOnError = FlutterError.onError;
+    FlutterError.onError = (details) {
+      flutterErrors.add(details);
+      previousOnError?.call(details);
+    };
+    addTearDown(() => FlutterError.onError = previousOnError);
+
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(736, 558);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferencesWithCache.create(
+      cacheOptions: const SharedPreferencesWithCacheOptions(),
+    );
+    final settings = AppSettingsStore(preferences: preferences);
+    final updateService = _FakeUpdateService();
+
+    await tester.pumpWidget(
+      AbyssLApp(settings: settings, updateService: updateService),
+    );
+    await tester.tap(find.byKey(const ValueKey('nav-settings')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('settings-section-3')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('settings-about-content')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('about-logo')), findsOneWidget);
+    expect(find.text('Developed by Daniel Mengel'), findsOneWidget);
+    expect(find.text('Version 1.0.0 (1)'), findsOneWidget);
+    expect(find.text(abyssLWebsiteUri), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('about-website-link')));
+    await tester.pump();
+    expect(updateService.websiteOpenCount, 1);
+
+    await tester.ensureVisible(find.byKey(const ValueKey('check-for-updates')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('check-for-updates')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('AbyssL 1.2.0 is available'), findsOneWidget);
+    expect(find.byKey(const ValueKey('install-update')), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(const ValueKey('install-update')));
+    await tester.tap(find.byKey(const ValueKey('install-update')));
+    await tester.pumpAndSettle();
+    expect(updateService.installCount, 1);
+
     final exception = tester.takeException();
     expect(
       exception,
@@ -542,6 +807,64 @@ class _RecordingRewriteApiClient extends AbyssLApiClient {
 
   @override
   void close() {}
+}
+
+class _FakeUpdateService implements AppUpdateService {
+  var websiteOpenCount = 0;
+  var installCount = 0;
+
+  @override
+  bool get supportsAutomaticInstall => true;
+
+  @override
+  Future<AppBuildInfo> loadInstalledBuild() async {
+    return const AppBuildInfo(version: '1.0.0', buildNumber: '1');
+  }
+
+  @override
+  Future<UpdateCheckResult> checkForUpdates(AppBuildInfo installedBuild) async {
+    return UpdateCheckResult(
+      kind: UpdateCheckKind.updateAvailable,
+      release: GitHubRelease(
+        tagName: 'v1.2.0',
+        version: Version(1, 2, 0),
+        pageUri: Uri.parse(
+          'https://github.com/chardonnay/AbyssL/releases/tag/v1.2.0',
+        ),
+        title: 'AbyssL 1.2.0',
+        notes: 'A signed update for macOS.',
+        assets: [
+          GitHubReleaseAsset(
+            name: abyssLMacOSReleaseAssetName,
+            downloadUri: Uri.parse(
+              'https://github.com/chardonnay/AbyssL/releases/download/v1.2.0/$abyssLMacOSReleaseAssetName',
+            ),
+            size: 42000000,
+          ),
+          GitHubReleaseAsset(
+            name: abyssLAppcastAssetName,
+            downloadUri: Uri.parse(
+              'https://github.com/chardonnay/AbyssL/releases/download/v1.2.0/$abyssLAppcastAssetName',
+            ),
+            size: 1400,
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Future<void> startAutomaticInstall() async {
+    installCount += 1;
+  }
+
+  @override
+  Future<void> openWebsite() async {
+    websiteOpenCount += 1;
+  }
+
+  @override
+  Future<void> openRelease(GitHubRelease release) async {}
 }
 
 class _RewriteCall {

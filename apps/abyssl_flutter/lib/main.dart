@@ -5,6 +5,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'src/abyssl_design.dart';
+import 'src/app_update.dart';
 import 'src/document_processing.dart';
 import 'src/models.dart';
 import 'src/openai_client.dart';
@@ -18,10 +20,16 @@ Future<void> main() async {
 }
 
 class AbyssLApp extends StatelessWidget {
-  const AbyssLApp({super.key, required this.settings, this.apiClient});
+  const AbyssLApp({
+    super.key,
+    required this.settings,
+    this.apiClient,
+    this.updateService,
+  });
 
   final AppSettingsStore settings;
   final AbyssLApiClient? apiClient;
+  final AppUpdateService? updateService;
 
   @override
   Widget build(BuildContext context) {
@@ -33,22 +41,17 @@ class AbyssLApp extends StatelessWidget {
         themeMode: _themeMode(settings.themeMode),
         theme: _themeData(Brightness.light),
         darkTheme: _themeData(Brightness.dark),
-        home: MainShell(settings: settings, apiClient: apiClient),
+        home: MainShell(
+          settings: settings,
+          apiClient: apiClient,
+          updateService: updateService,
+        ),
       ),
     );
   }
 
   static ThemeData _themeData(Brightness brightness) {
-    return ThemeData(
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xff2f5f6f),
-        brightness: brightness,
-      ),
-      useMaterial3: true,
-      inputDecorationTheme: const InputDecorationTheme(
-        border: OutlineInputBorder(),
-      ),
-    );
+    return buildAbyssLTheme(brightness);
   }
 
   static ThemeMode _themeMode(AppThemeMode mode) => switch (mode) {
@@ -225,10 +228,16 @@ class ResultChipPanel extends StatelessWidget {
 }
 
 class MainShell extends StatefulWidget {
-  const MainShell({super.key, required this.settings, this.apiClient});
+  const MainShell({
+    super.key,
+    required this.settings,
+    this.apiClient,
+    this.updateService,
+  });
 
   final AppSettingsStore settings;
   final AbyssLApiClient? apiClient;
+  final AppUpdateService? updateService;
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -237,6 +246,9 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   final _documentService = const DocumentProcessingService();
   final _captureService = DesktopCaptureService();
+  final _commandController = TextEditingController();
+  final _commandFocusNode = FocusNode(debugLabel: 'AbyssL command input');
+  final _styleMenuController = MenuController();
   final _sourceController = TextEditingController();
   final _translationController = TextEditingController();
   final _instructionController = TextEditingController();
@@ -297,6 +309,8 @@ class _MainShellState extends State<MainShell> {
     if (_ownsApiClient) {
       _apiClient.close();
     }
+    _commandController.dispose();
+    _commandFocusNode.dispose();
     _sourceController.dispose();
     _translationController.dispose();
     _instructionController.dispose();
@@ -728,12 +742,105 @@ class _MainShellState extends State<MainShell> {
       builder: (context) => SettingsDialog(
         settings: widget.settings,
         apiClient: _apiClient,
+        updateService: widget.updateService,
         onSaved: () async {
           await _configureCapture();
           setState(() {});
         },
       ),
     );
+  }
+
+  void _focusCommand() {
+    _commandFocusNode.requestFocus();
+    _commandController.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: _commandController.text.length,
+    );
+  }
+
+  void _submitCommand(String rawCommand) {
+    final command = rawCommand.trim().toLowerCase();
+    if (command.isEmpty) return;
+
+    if (command.contains('setting') || command.contains('einstellung')) {
+      _commandController.clear();
+      unawaited(_openSettings());
+      return;
+    }
+    if (command.startsWith('translate') || command.startsWith('übersetz')) {
+      setState(() => _selectedIndex = 0);
+      if (_sourceController.text.trim().isNotEmpty) {
+        unawaited(_translateNow());
+      }
+    } else if (command.startsWith('correct') || command.startsWith('korrig')) {
+      setState(() => _selectedIndex = 1);
+      if (_correctionInputController.text.trim().isNotEmpty) {
+        unawaited(_correctWriting());
+      }
+    } else if (command.startsWith('rewrite') ||
+        command.startsWith('umschreib')) {
+      setState(() => _selectedIndex = 1);
+      if (_correctionInputController.text.trim().isNotEmpty) {
+        unawaited(_rewriteWriting());
+      }
+    } else if (command.startsWith('document') ||
+        command.startsWith('dokument')) {
+      setState(() => _selectedIndex = 2);
+    } else if (command.startsWith('process') ||
+        command.startsWith('verarbeit')) {
+      setState(() => _selectedIndex = 2);
+      if (_documentJobs.isNotEmpty && _documentOutputDirectory != null) {
+        unawaited(_processDocuments());
+      }
+    } else {
+      setState(
+        () => _status =
+            'Unknown command. Try Translate, Correct, Rewrite, Documents, or Settings.',
+      );
+    }
+    _commandController.clear();
+  }
+
+  void _runPrimaryAction() {
+    if (_isBusy) return;
+    switch (_selectedIndex) {
+      case 0:
+        unawaited(_translateNow());
+      case 1:
+        unawaited(_correctWriting());
+      default:
+        unawaited(_processDocuments());
+    }
+  }
+
+  String get _primaryActionLabel => switch (_selectedIndex) {
+    0 => 'Translate',
+    1 => 'Correct',
+    _ => 'Process',
+  };
+
+  IconData get _primaryActionIcon => switch (_selectedIndex) {
+    0 => Icons.translate,
+    1 => Icons.spellcheck,
+    _ => Icons.play_arrow_rounded,
+  };
+
+  String get _styleSummary {
+    final settings = widget.settings;
+    final isNeutral =
+        settings.styleRegister == RegisterStyle.neutral &&
+        settings.styleComplexity == ComplexityStyle.neutral &&
+        settings.spellingMode == SpellingMode.preserve;
+    return isNeutral ? 'Neutral' : 'Custom';
+  }
+
+  void _resetStyleSettings() {
+    widget.settings.update((settings) {
+      settings.styleRegister = RegisterStyle.neutral;
+      settings.styleComplexity = ComplexityStyle.neutral;
+      settings.spellingMode = SpellingMode.preserve;
+    });
   }
 
   @override
@@ -746,60 +853,332 @@ class _MainShellState extends State<MainShell> {
           1 => _correctionView(),
           _ => _documentView(),
         };
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text('AbyssL Translator'),
-            actions: [
-              IconButton(
-                tooltip: 'Settings',
-                onPressed: _openSettings,
-                icon: const Icon(Icons.settings_outlined),
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 900;
+            final railWidth = constraints.maxWidth >= 1200 ? 102.0 : 88.0;
+            return CallbackShortcuts(
+              bindings: {
+                const SingleActivator(LogicalKeyboardKey.keyK, meta: true):
+                    _focusCommand,
+                const SingleActivator(LogicalKeyboardKey.keyK, control: true):
+                    _focusCommand,
+                const SingleActivator(LogicalKeyboardKey.enter, meta: true):
+                    _runPrimaryAction,
+                const SingleActivator(LogicalKeyboardKey.enter, control: true):
+                    _runPrimaryAction,
+              },
+              child: Focus(
+                autofocus: true,
+                child: Scaffold(
+                  body: Column(
+                    children: [
+                      _workspaceTopBar(
+                        width: constraints.maxWidth,
+                        compact: compact,
+                      ),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            _workspaceRail(width: railWidth),
+                            Expanded(
+                              child: ColoredBox(
+                                color: Theme.of(
+                                  context,
+                                ).scaffoldBackgroundColor,
+                                child: content,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _statusBar(compact: compact),
+                    ],
+                  ),
+                ),
               ),
-            ],
-          ),
-          body: Row(
-            children: [
-              NavigationRail(
-                selectedIndex: _selectedIndex,
-                onDestinationSelected: (index) =>
-                    setState(() => _selectedIndex = index),
-                labelType: NavigationRailLabelType.all,
-                destinations: const [
-                  NavigationRailDestination(
-                    icon: Icon(Icons.public),
-                    label: Text('Translator'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.spellcheck),
-                    label: Text('Correction'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.description_outlined),
-                    label: Text('Documents'),
-                  ),
-                ],
-              ),
-              const VerticalDivider(width: 1),
-              Expanded(child: content),
-            ],
-          ),
-          bottomNavigationBar: _statusBar(),
+            );
+          },
         );
       },
     );
   }
 
-  Widget _statusBar() {
-    final capture = _captureStatus;
-    final message = _status.isNotEmpty
-        ? _status
-        : capture == null
-        ? ''
-        : 'Capture: ${capture.message}';
+  Widget _workspaceTopBar({required double width, required bool compact}) {
+    final showLanguageControls = width >= 1200 && _selectedIndex == 0;
+    final showWordmark = width >= 900;
+    final barHeight = compact ? 68.0 : 84.0;
+    return Container(
+      key: const ValueKey('command-bar'),
+      height: barHeight,
+      padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 20),
+      decoration: const BoxDecoration(
+        color: AbyssLPalette.ink,
+        border: Border(bottom: BorderSide(color: AbyssLPalette.inkBorder)),
+      ),
+      child: Row(
+        children: [
+          KeyedSubtree(
+            key: const ValueKey('app-brand'),
+            child: AbyssLBrand(showWordmark: showWordmark),
+          ),
+          SizedBox(width: compact ? 12 : 20),
+          if (compact)
+            SizedBox(
+              width: 126,
+              height: 44,
+              child: OutlinedButton.icon(
+                key: const ValueKey('command-input'),
+                onPressed: _focusCommand,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFDCE2EC),
+                  backgroundColor: AbyssLPalette.inkRaised,
+                  side: const BorderSide(color: AbyssLPalette.inkBorder),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+                icon: const Icon(Icons.search, size: 20),
+                label: const Text('Command'),
+              ),
+            )
+          else
+            Expanded(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 620),
+                child: SizedBox(
+                  height: 54,
+                  child: TextField(
+                    key: const ValueKey('command-input'),
+                    controller: _commandController,
+                    focusNode: _commandFocusNode,
+                    onSubmitted: _submitCommand,
+                    textInputAction: TextInputAction.done,
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                    decoration: InputDecoration(
+                      hintText: 'Type a command or press ⌘K',
+                      hintStyle: const TextStyle(color: Color(0xFFB4B8C1)),
+                      prefixIcon: const Icon(
+                        Icons.search,
+                        color: Color(0xFFB4B8C1),
+                      ),
+                      suffixIcon: const Center(
+                        widthFactor: 1,
+                        child: AbyssLKeyboardHint('⌘K', dark: true),
+                      ),
+                      filled: true,
+                      fillColor: AbyssLPalette.inkRaised,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(
+                          color: AbyssLPalette.inkBorder,
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(
+                          color: AbyssLPalette.inkBorder,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(
+                          color: AbyssLPalette.blue,
+                          width: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (!compact) const SizedBox(width: 14),
+          if (showLanguageControls) ...[
+            _topLanguagePicker(
+              key: const ValueKey('source-language-top'),
+              label: 'Source',
+              value: widget.settings.sourceLanguage,
+              values: TranslationLanguage.values,
+              onChanged: (value) => widget.settings.update(
+                (settings) => settings.sourceLanguage = value,
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 10),
+              child: Icon(
+                Icons.arrow_forward,
+                color: Color(0xFFB4B8C1),
+                size: 20,
+              ),
+            ),
+            _topLanguagePicker(
+              key: const ValueKey('target-language-top'),
+              label: 'Target',
+              value: widget.settings.targetLanguage,
+              values: TranslationLanguage.values
+                  .where(
+                    (language) => language != TranslationLanguage.automatic,
+                  )
+                  .toList(),
+              onChanged: (value) => widget.settings.update(
+                (settings) => settings.targetLanguage = value,
+              ),
+            ),
+            const SizedBox(width: 16),
+          ] else
+            const Spacer(),
+          SizedBox(
+            key: const ValueKey('translate-primary'),
+            height: compact ? 44 : 54,
+            child: FilledButton.icon(
+              onPressed: _isBusy ? null : _runPrimaryAction,
+              icon: Icon(_primaryActionIcon, size: 20),
+              label: Text(_primaryActionLabel),
+              style: FilledButton.styleFrom(
+                padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 20),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _topLanguagePicker({
+    required Key key,
+    required String label,
+    required TranslationLanguage value,
+    required List<TranslationLanguage> values,
+    required ValueChanged<TranslationLanguage> onChanged,
+  }) {
+    return Container(
+      key: key,
+      width: 190,
+      height: 54,
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 5),
+      decoration: BoxDecoration(
+        color: AbyssLPalette.inkRaised,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AbyssLPalette.inkBorder),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<TranslationLanguage>(
+          value: value,
+          isExpanded: true,
+          dropdownColor: AbyssLPalette.inkRaised,
+          iconEnabledColor: const Color(0xFFB4B8C1),
+          style: const TextStyle(color: Colors.white, fontSize: 15),
+          items: values
+              .map(
+                (language) => DropdownMenuItem(
+                  value: language,
+                  child: Text(language.label),
+                ),
+              )
+              .toList(),
+          selectedItemBuilder: (context) => values
+              .map(
+                (language) => Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      language.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        color: Color(0xFFB4B8C1),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+              .toList(),
+          onChanged: (next) {
+            if (next != null) onChanged(next);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _workspaceRail({required double width}) {
+    return Container(
+      key: const ValueKey('workspace-rail'),
+      width: width,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(
+          right: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+        ),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 16),
+          KeyedSubtree(
+            key: const ValueKey('nav-translator'),
+            child: AbyssLNavItem(
+              icon: Icons.translate,
+              label: 'Translate',
+              selected: _selectedIndex == 0,
+              onTap: () => setState(() => _selectedIndex = 0),
+            ),
+          ),
+          const SizedBox(height: 6),
+          KeyedSubtree(
+            key: const ValueKey('nav-correction'),
+            child: AbyssLNavItem(
+              icon: Icons.edit_note_outlined,
+              label: 'Correction',
+              selected: _selectedIndex == 1,
+              onTap: () => setState(() => _selectedIndex = 1),
+            ),
+          ),
+          const SizedBox(height: 6),
+          KeyedSubtree(
+            key: const ValueKey('nav-documents'),
+            child: AbyssLNavItem(
+              icon: Icons.description_outlined,
+              label: 'Documents',
+              selected: _selectedIndex == 2,
+              onTap: () => setState(() => _selectedIndex = 2),
+            ),
+          ),
+          const Spacer(),
+          KeyedSubtree(
+            key: const ValueKey('nav-settings'),
+            child: AbyssLNavItem(
+              icon: Icons.settings_outlined,
+              label: 'Settings',
+              selected: false,
+              onTap: _openSettings,
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusBar({required bool compact}) {
+    final message = _status;
+    if (!_isBusy && message.isEmpty) {
+      return const SizedBox.shrink();
+    }
     return Material(
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: SizedBox(
-        height: 36,
+        height: 32,
         child: Row(
           children: [
             if (_isBusy)
@@ -820,6 +1199,16 @@ class _MainShellState extends State<MainShell> {
                 ),
               ),
             ),
+            if (!compact && _captureStatus != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: Tooltip(
+                  message: _captureStatus!.message,
+                  child: AbyssLKeyboardHint(
+                    widget.settings.captureShortcut.displayName,
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -827,146 +1216,545 @@ class _MainShellState extends State<MainShell> {
   }
 
   Widget _translatorView() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          _languageAndStyleRow(),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _instructionController,
-            decoration: const InputDecoration(labelText: 'Direct instruction'),
-            minLines: 1,
-            maxLines: 2,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 900;
+        final tightHeight = constraints.maxHeight < 620;
+        final horizontalPadding = compact ? 12.0 : 20.0;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            compact ? 10 : 20,
+            horizontalPadding,
+            compact ? 10 : 16,
           ),
-          const SizedBox(height: 12),
+          child: Column(
+            children: [
+              Expanded(
+                flex: 58,
+                child: _translatorSourcePane(compact: compact),
+              ),
+              SizedBox(height: compact ? 10 : 18),
+              _translatorBridge(compact: compact),
+              SizedBox(height: compact ? 12 : 20),
+              Expanded(
+                flex: 42,
+                child: _translatorResultPane(
+                  compact: compact,
+                  tightHeight: tightHeight,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _translatorSourcePane({required bool compact}) {
+    return AbyssLPane(
+      key: const ValueKey('translator-source-pane'),
+      headerHeight: compact ? 68 : 90,
+      header: Row(
+        children: [
           Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _sourceController,
-                    onChanged: _scheduleAutoTranslate,
-                    expands: true,
-                    minLines: null,
-                    maxLines: null,
-                    style: TextStyle(fontSize: widget.settings.editorFontSize),
-                    decoration: InputDecoration(
-                      labelText: 'Source',
-                      suffixIcon: IconButton(
-                        tooltip: 'Clear source and translation',
-                        onPressed: _isBusy ? null : _clearTranslatorTexts,
-                        icon: const Icon(Icons.clear),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Center(
-                  child: IconButton.outlined(
-                    tooltip: _canSwapTranslatorLanguages
-                        ? 'Swap source and target languages'
-                        : 'Choose a fixed source language to swap languages',
-                    onPressed: _isBusy || !_canSwapTranslatorLanguages
-                        ? null
-                        : _swapTranslatorLanguages,
-                    icon: const Icon(Icons.swap_horiz),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _translationController,
-                    expands: true,
-                    minLines: null,
-                    maxLines: null,
-                    style: TextStyle(fontSize: widget.settings.editorFontSize),
-                    decoration: const InputDecoration(labelText: 'Translation'),
+                const AbyssLSectionLabel('Direct instruction'),
+                const SizedBox(height: 5),
+                TextField(
+                  key: const ValueKey('direct-instruction'),
+                  controller: _instructionController,
+                  minLines: 1,
+                  maxLines: 1,
+                  style: const TextStyle(fontSize: 14),
+                  decoration: const InputDecoration(
+                    hintText:
+                        'Provide context or instructions for translation…',
+                    filled: false,
+                    isDense: true,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              FilledButton.icon(
-                onPressed: _isBusy ? null : _translateNow,
-                icon: const Icon(Icons.translate),
-                label: const Text('Translate'),
-              ),
-              _autoTranslateSwitch(),
-              if (_isBusy) _cancelRequestButton(),
-              OutlinedButton.icon(
-                onPressed: _translationController.text.trim().isEmpty || _isBusy
-                    ? null
-                    : _suggestAlternatives,
-                icon: const Icon(Icons.auto_awesome),
-                label: const Text('Alternatives'),
-              ),
-              IconButton.outlined(
-                tooltip: 'Copy translation',
-                onPressed: _translationController.text.isEmpty
-                    ? null
-                    : () => Clipboard.setData(
-                        ClipboardData(text: _translationController.text),
-                      ),
-                icon: const Icon(Icons.copy),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Text(widget.settings.captureShortcut.displayName),
-              ),
-            ],
+          const SizedBox(width: 10),
+          _styleMenu(compact: compact),
+        ],
+      ),
+      child: Stack(
+        children: [
+          TextField(
+            key: const ValueKey('source-editor'),
+            controller: _sourceController,
+            onChanged: _scheduleAutoTranslate,
+            expands: true,
+            minLines: null,
+            maxLines: null,
+            textAlignVertical: TextAlignVertical.top,
+            style: TextStyle(
+              fontSize: widget.settings.editorFontSize,
+              height: 1.75,
+            ),
+            decoration: const InputDecoration(
+              hintText: 'Type or paste your source text here…',
+              filled: true,
+              fillColor: Colors.transparent,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              contentPadding: EdgeInsets.fromLTRB(32, 24, 32, 38),
+            ),
           ),
-          if (_synonyms.isNotEmpty || _alternatives.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 128,
-              child: Row(
+          Positioned(
+            right: 18,
+            bottom: 12,
+            child: ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _sourceController,
+              builder: (context, value, _) => Text(
+                '${value.text.length} / 10,000',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _styleMenu({required bool compact}) {
+    final brightness = Theme.of(context).brightness;
+    return MenuAnchor(
+      controller: _styleMenuController,
+      alignmentOffset: const Offset(-214, 8),
+      style: MenuStyle(
+        padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+        elevation: const WidgetStatePropertyAll(12),
+        backgroundColor: WidgetStatePropertyAll(
+          AbyssLPalette.surfaceFor(brightness),
+        ),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: AbyssLPalette.outlineFor(brightness)),
+          ),
+        ),
+      ),
+      menuChildren: [
+        KeyedSubtree(
+          key: const ValueKey('style-popover'),
+          child: SizedBox(
+            width: 320,
+            child: Padding(
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: _chipPanel(
-                      title: 'Synonyms',
-                      values: _synonyms,
-                      controller: _synonymsScrollController,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Translation style',
+                          style: Theme.of(context).textTheme.titleMedium,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Close style options',
+                        onPressed: _styleMenuController.close,
+                        icon: const Icon(Icons.close, size: 19),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _styleOptionRow(
+                    leading: const Icon(Icons.person_outline, size: 21),
+                    field: _enumDropdown(
+                      label: 'Register',
+                      value: widget.settings.styleRegister,
+                      values: RegisterStyle.values,
+                      text: (value) => value.label,
+                      onChanged: (value) => widget.settings.update(
+                        (settings) => settings.styleRegister = value,
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(height: 14),
+                  _styleOptionRow(
+                    leading: const Icon(Icons.bar_chart_outlined, size: 21),
+                    field: _enumDropdown(
+                      label: 'Complexity',
+                      value: widget.settings.styleComplexity,
+                      values: ComplexityStyle.values,
+                      text: (value) => value.label,
+                      onChanged: (value) => widget.settings.update(
+                        (settings) => settings.styleComplexity = value,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _styleOptionRow(
+                    leading: const Text(
+                      'ABC',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    field: _enumDropdown(
+                      label: 'Spelling',
+                      value: widget.settings.spellingMode,
+                      values: SpellingMode.values,
+                      text: (value) => value.label,
+                      onChanged: (value) => widget.settings.update(
+                        (settings) => settings.spellingMode = value,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: _resetStyleSettings,
+                      child: const Text('Reset to defaults'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+      builder: (context, controller, child) => TextButton.icon(
+        key: const ValueKey('style-trigger'),
+        onPressed: () =>
+            controller.isOpen ? controller.close() : controller.open(),
+        icon: const Icon(Icons.tune, size: 19),
+        label: Text(compact ? _styleSummary : 'Style: $_styleSummary'),
+        style: TextButton.styleFrom(
+          foregroundColor: Theme.of(context).colorScheme.onSurface,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        ),
+      ),
+    );
+  }
+
+  Widget _styleOptionRow({required Widget leading, required Widget field}) {
+    return Row(
+      children: [
+        SizedBox(width: 24, child: Center(child: leading)),
+        const SizedBox(width: 10),
+        Expanded(child: field),
+      ],
+    );
+  }
+
+  Widget _translatorBridge({required bool compact}) {
+    final brightness = Theme.of(context).brightness;
+    final pickerWidth = compact ? 138.0 : 190.0;
+    return Container(
+      key: const ValueKey('translation-bridge'),
+      height: compact ? 58 : 66,
+      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
+      decoration: BoxDecoration(
+        color: AbyssLPalette.surfaceFor(brightness),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AbyssLPalette.outlineFor(brightness)),
+      ),
+      child: Row(
+        children: [
+          _bridgeLanguagePicker(
+            key: const ValueKey('source-language'),
+            label: 'Source',
+            width: pickerWidth,
+            value: widget.settings.sourceLanguage,
+            values: TranslationLanguage.values,
+            leading: Icons.auto_awesome,
+            onChanged: (value) => widget.settings.update(
+              (settings) => settings.sourceLanguage = value,
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: compact ? 5 : 10),
+            child: Icon(
+              Icons.arrow_forward,
+              size: 18,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          _bridgeLanguagePicker(
+            key: const ValueKey('target-language'),
+            label: 'Target',
+            width: pickerWidth,
+            value: widget.settings.targetLanguage,
+            values: TranslationLanguage.values
+                .where((language) => language != TranslationLanguage.automatic)
+                .toList(),
+            leading: Icons.language,
+            onChanged: (value) => widget.settings.update(
+              (settings) => settings.targetLanguage = value,
+            ),
+          ),
+          SizedBox(width: compact ? 5 : 10),
+          IconButton.outlined(
+            key: const ValueKey('swap-languages'),
+            tooltip: _canSwapTranslatorLanguages
+                ? 'Swap source and target languages'
+                : 'Choose a fixed source language to swap languages',
+            onPressed: _isBusy || !_canSwapTranslatorLanguages
+                ? null
+                : _swapTranslatorLanguages,
+            icon: const Icon(Icons.swap_horiz, size: 20),
+          ),
+          SizedBox(width: compact ? 6 : 14),
+          _autoTranslateSwitch(compact: compact),
+          if (!compact) ...[
+            const SizedBox(width: 14),
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _translationController,
+              builder: (context, value, _) => Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: value.text.trim().isEmpty
+                          ? Theme.of(context).colorScheme.outline
+                          : AbyssLPalette.success,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 7),
+                  Text(
+                    value.text.trim().isEmpty ? 'Ready' : 'Translated',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const Spacer(),
+          if (compact)
+            IconButton(
+              tooltip: 'Clear source and translation',
+              onPressed: _isBusy ? null : _clearTranslatorTexts,
+              icon: const Icon(Icons.close),
+            )
+          else
+            Tooltip(
+              message: 'Clear source and translation',
+              child: OutlinedButton.icon(
+                onPressed: _isBusy ? null : _clearTranslatorTexts,
+                icon: const Icon(Icons.close, size: 18),
+                label: const Text('Clear'),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bridgeLanguagePicker({
+    required Key key,
+    required String label,
+    required double width,
+    required TranslationLanguage value,
+    required List<TranslationLanguage> values,
+    required IconData leading,
+    required ValueChanged<TranslationLanguage> onChanged,
+  }) {
+    return KeyedSubtree(
+      key: key,
+      child: SizedBox(
+        width: width,
+        child: DropdownButtonFormField<TranslationLanguage>(
+          key: ValueKey(value),
+          initialValue: value,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: label,
+            prefixIcon: Icon(leading, size: 18),
+            isDense: true,
+            contentPadding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+          ),
+          items: values
+              .map(
+                (language) => DropdownMenuItem(
+                  value: language,
+                  child: Text(
+                    language.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              )
+              .toList(),
+          onChanged: (next) {
+            if (next != null) onChanged(next);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _translatorResultPane({
+    required bool compact,
+    required bool tightHeight,
+  }) {
+    final hasSuggestions = _synonyms.isNotEmpty || _alternatives.isNotEmpty;
+    return AbyssLPane(
+      key: const ValueKey('translator-result-pane'),
+      header: Row(
+        children: [
+          const AbyssLSectionLabel('Translation', color: AbyssLPalette.blue),
+          const Spacer(),
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: _translationController,
+            builder: (context, value, _) {
+              final enabled = value.text.trim().isNotEmpty && !_isBusy;
+              if (compact) {
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Copy translation',
+                      onPressed: enabled
+                          ? () => Clipboard.setData(
+                              ClipboardData(text: value.text),
+                            )
+                          : null,
+                      icon: const Icon(Icons.copy_outlined, size: 20),
+                    ),
+                    IconButton(
+                      tooltip: 'Alternatives',
+                      onPressed: enabled ? _suggestAlternatives : null,
+                      icon: const Icon(Icons.auto_awesome, size: 20),
+                    ),
+                  ],
+                );
+              }
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: enabled
+                        ? () =>
+                              Clipboard.setData(ClipboardData(text: value.text))
+                        : null,
+                    icon: const Icon(Icons.copy_outlined, size: 18),
+                    label: const Text('Copy'),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: enabled ? _suggestAlternatives : null,
+                    icon: const Icon(Icons.auto_awesome, size: 18),
+                    label: const Text('Alternatives'),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+      footer: hasSuggestions
+          ? _translatorSuggestions(compact: compact || tightHeight)
+          : null,
+      child: TextField(
+        key: const ValueKey('translation-editor'),
+        controller: _translationController,
+        expands: true,
+        minLines: null,
+        maxLines: null,
+        textAlignVertical: TextAlignVertical.top,
+        style: TextStyle(
+          fontSize: widget.settings.editorFontSize,
+          height: 1.65,
+        ),
+        decoration: const InputDecoration(
+          hintText: 'Your translation will appear here…',
+          filled: true,
+          fillColor: Colors.transparent,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          contentPadding: EdgeInsets.fromLTRB(20, 18, 20, 18),
+        ),
+      ),
+    );
+  }
+
+  Widget _translatorSuggestions({required bool compact}) {
+    if (compact) {
+      final suggestions = [..._synonyms, ..._alternatives];
+      return SizedBox(
+        height: 48,
+        child: ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          scrollDirection: Axis.horizontal,
+          itemCount: suggestions.length,
+          separatorBuilder: (context, index) => const SizedBox(width: 6),
+          itemBuilder: (context, index) => ActionChip(
+            label: Text(suggestions[index]),
+            onPressed: () =>
+                Clipboard.setData(ClipboardData(text: suggestions[index])),
+          ),
+        ),
+      );
+    }
+    return SizedBox(
+      height: 106,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: _chipPanel(
+                title: 'Synonyms',
+                values: _synonyms,
+                controller: _synonymsScrollController,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                children: [
+                  SizedBox(
+                    height: 42,
+                    child: TextField(
+                      controller: _alternativesInstructionController,
+                      decoration: const InputDecoration(
+                        labelText: 'Alternative instruction',
+                        isDense: true,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
                   Expanded(
-                    child: Column(
-                      children: [
-                        TextField(
-                          controller: _alternativesInstructionController,
-                          decoration: const InputDecoration(
-                            labelText: 'Alternative instruction',
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Expanded(
-                          child: _chipPanel(
-                            title: 'Alternatives',
-                            values: _alternatives,
-                            controller: _alternativesScrollController,
-                          ),
-                        ),
-                      ],
+                    child: _chipPanel(
+                      title: 'Alternatives',
+                      values: _alternatives,
+                      controller: _alternativesScrollController,
                     ),
                   ),
                 ],
               ),
             ),
           ],
-        ],
+        ),
       ),
     );
   }
 
-  Widget _autoTranslateSwitch() {
+  Widget _autoTranslateSwitch({bool compact = false}) {
     return Tooltip(
       message: widget.settings.autoTranslateEnabled
           ? 'Auto translate after Source changes'
@@ -974,222 +1762,315 @@ class _MainShellState extends State<MainShell> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('Auto translate'),
-          const SizedBox(width: 4),
           Switch(
             key: const ValueKey('auto-translate-switch'),
             value: widget.settings.autoTranslateEnabled,
             onChanged: _setAutoTranslateEnabled,
+          ),
+          if (!compact) ...[
+            const SizedBox(width: 4),
+            const Text('Auto-translate'),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _correctionView() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 900;
+        final tightHeight = constraints.maxHeight < 620;
+        final padding = compact ? 12.0 : 20.0;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            padding,
+            compact ? 10 : 20,
+            padding,
+            compact ? 10 : 16,
+          ),
+          child: Column(
+            children: [
+              Expanded(
+                flex: 56,
+                child: _correctionSourcePane(compact: compact),
+              ),
+              SizedBox(height: compact ? 10 : 18),
+              _correctionBridge(compact: compact),
+              SizedBox(height: compact ? 12 : 20),
+              Expanded(
+                flex: 44,
+                child: _correctionResultPane(
+                  compact: compact,
+                  tightHeight: tightHeight,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _correctionSourcePane({required bool compact}) {
+    return AbyssLPane(
+      key: const ValueKey('correction-source-pane'),
+      headerHeight: compact ? 72 : 90,
+      header: Row(
+        children: [
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const AbyssLSectionLabel('Correction instruction'),
+                const SizedBox(height: 5),
+                TextField(
+                  key: const ValueKey('correction-instruction'),
+                  controller: _correctionInstructionController,
+                  minLines: 1,
+                  maxLines: 1,
+                  decoration: const InputDecoration(
+                    hintText:
+                        'Describe how the text should be corrected or rewritten…',
+                    filled: false,
+                    isDense: true,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: compact ? 152 : 190,
+            child: _enumDropdown(
+              label: 'Rewrite style',
+              value: _rewritePreset,
+              values: WritingStylePreset.values,
+              text: (value) => value.label,
+              onChanged: (value) => setState(() => _rewritePreset = value),
+            ),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          TextField(
+            key: const ValueKey('correction-input-editor'),
+            controller: _correctionInputController,
+            onChanged: (_) => _clearCorrectionMarks(),
+            expands: true,
+            minLines: null,
+            maxLines: null,
+            textAlignVertical: TextAlignVertical.top,
+            style: TextStyle(
+              fontSize: widget.settings.editorFontSize,
+              height: 1.7,
+            ),
+            decoration: const InputDecoration(
+              hintText: 'Type or paste the text you want to improve…',
+              filled: true,
+              fillColor: Colors.transparent,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              contentPadding: EdgeInsets.fromLTRB(32, 24, 32, 38),
+            ),
+          ),
+          Positioned(
+            right: 18,
+            bottom: 12,
+            child: ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _correctionInputController,
+              builder: (context, value, _) => Text(
+                '${value.text.length} characters',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _languageAndStyleRow() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final availableWidth = constraints.maxWidth;
-        final fieldWidth = availableWidth < 720
-            ? ((availableWidth - 8) / 2).clamp(180.0, availableWidth)
-            : ((availableWidth - 32) / 5).clamp(120.0, availableWidth);
-        return Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            SizedBox(
-              width: fieldWidth,
-              child: _enumDropdown(
-                label: 'Source',
-                value: widget.settings.sourceLanguage,
-                values: TranslationLanguage.values,
-                text: (value) => value.label,
-                onChanged: (value) => widget.settings.update(
-                  (settings) => settings.sourceLanguage = value,
-                ),
+  Widget _correctionBridge({required bool compact}) {
+    final brightness = Theme.of(context).brightness;
+    return Container(
+      key: const ValueKey('correction-action-bridge'),
+      height: compact ? 58 : 66,
+      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
+      decoration: BoxDecoration(
+        color: AbyssLPalette.surfaceFor(brightness),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AbyssLPalette.outlineFor(brightness)),
+      ),
+      child: Row(
+        children: [
+          OutlinedButton.icon(
+            key: const ValueKey('rewrite-primary'),
+            onPressed: _isBusy ? null : _rewriteWriting,
+            icon: const Icon(Icons.edit_note, size: 18),
+            label: const Text('Rewrite'),
+          ),
+          if (_isBusy) ...[const SizedBox(width: 8), _cancelRequestButton()],
+          if (!compact && _correctionIssues.isNotEmpty) ...[
+            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.errorContainer,
+                borderRadius: BorderRadius.circular(999),
               ),
-            ),
-            SizedBox(
-              width: fieldWidth,
-              child: _enumDropdown(
-                label: 'Target',
-                value: widget.settings.targetLanguage,
-                values: TranslationLanguage.values
-                    .where(
-                      (language) => language != TranslationLanguage.automatic,
-                    )
-                    .toList(),
-                text: (value) => value.label,
-                onChanged: (value) => widget.settings.update(
-                  (settings) => settings.targetLanguage = value,
-                ),
-              ),
-            ),
-            SizedBox(
-              width: fieldWidth,
-              child: _enumDropdown(
-                label: 'Register',
-                value: widget.settings.styleRegister,
-                values: RegisterStyle.values,
-                text: (value) => value.label,
-                onChanged: (value) => widget.settings.update(
-                  (settings) => settings.styleRegister = value,
-                ),
-              ),
-            ),
-            SizedBox(
-              width: fieldWidth,
-              child: _enumDropdown(
-                label: 'Complexity',
-                value: widget.settings.styleComplexity,
-                values: ComplexityStyle.values,
-                text: (value) => value.label,
-                onChanged: (value) => widget.settings.update(
-                  (settings) => settings.styleComplexity = value,
-                ),
-              ),
-            ),
-            SizedBox(
-              width: fieldWidth,
-              child: _enumDropdown(
-                label: 'Spelling',
-                value: widget.settings.spellingMode,
-                values: SpellingMode.values,
-                text: (value) => value.label,
-                onChanged: (value) => widget.settings.update(
-                  (settings) => settings.spellingMode = value,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 17,
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(_correctionIssueCountLabel()),
+                ],
               ),
             ),
           ],
-        );
-      },
+          const Spacer(),
+          if (compact)
+            IconButton(
+              tooltip: 'Clear input and correction',
+              onPressed: _isBusy ? null : _clearCorrectionTexts,
+              icon: const Icon(Icons.close),
+            )
+          else
+            Tooltip(
+              message: 'Clear input and correction',
+              child: OutlinedButton.icon(
+                onPressed: _isBusy ? null : _clearCorrectionTexts,
+                icon: const Icon(Icons.close, size: 18),
+                label: const Text('Clear'),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
-  Widget _correctionView() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
+  Widget _correctionResultPane({
+    required bool compact,
+    required bool tightHeight,
+  }) {
+    final hasIssues = _correctionIssues.isNotEmpty;
+    return AbyssLPane(
+      key: const ValueKey('correction-result-pane'),
+      header: Row(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _correctionInstructionController,
-                  decoration: const InputDecoration(
-                    labelText: 'Direct correction or rewrite instruction',
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 180,
-                child: _enumDropdown(
-                  label: 'Rewrite style',
-                  value: _rewritePreset,
-                  values: WritingStylePreset.values,
-                  text: (value) => value.label,
-                  onChanged: (value) => setState(() => _rewritePreset = value),
-                ),
-              ),
-            ],
+          const AbyssLSectionLabel(
+            'Corrected / rewritten text',
+            color: AbyssLPalette.blue,
           ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _correctionInputController,
-                    onChanged: (_) => _clearCorrectionMarks(),
-                    expands: true,
-                    minLines: null,
-                    maxLines: null,
-                    style: TextStyle(fontSize: widget.settings.editorFontSize),
-                    decoration: InputDecoration(
-                      labelText: 'Input',
-                      suffixIcon: IconButton(
-                        tooltip: 'Clear input and correction',
-                        onPressed: _isBusy ? null : _clearCorrectionTexts,
-                        icon: const Icon(Icons.clear),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: _correctionOutputController,
-                    expands: true,
-                    minLines: null,
-                    maxLines: null,
-                    style: TextStyle(fontSize: widget.settings.editorFontSize),
-                    decoration: const InputDecoration(
-                      labelText: 'Corrected / rewritten text',
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              FilledButton.icon(
-                onPressed: _isBusy ? null : _correctWriting,
-                icon: const Icon(Icons.spellcheck),
-                label: const Text('Correct'),
-              ),
-              if (_isBusy) ...[
-                const SizedBox(width: 8),
-                _cancelRequestButton(),
-              ],
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: _isBusy ? null : _rewriteWriting,
-                icon: const Icon(Icons.edit_note),
-                label: const Text('Rewrite'),
-              ),
-              const SizedBox(width: 8),
-              IconButton.outlined(
-                tooltip: 'Copy result',
-                onPressed: _correctionOutputController.text.isEmpty
-                    ? null
-                    : () => Clipboard.setData(
-                        ClipboardData(text: _correctionOutputController.text),
-                      ),
-                icon: const Icon(Icons.copy),
-              ),
-              if (_correctionIssues.isNotEmpty) ...[
-                const SizedBox(width: 12),
-                Chip(
-                  avatar: const Icon(Icons.error_outline, size: 18),
-                  label: Text(_correctionIssueCountLabel()),
-                ),
-              ],
-            ],
-          ),
-          if (_correctionIssues.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 130,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemBuilder: (context, index) {
-                  final issue = _correctionIssues[index];
-                  return SizedBox(
-                    width: 320,
-                    child: CorrectionIssueCard(issue: issue),
-                  );
-                },
-                separatorBuilder: (context, index) => const SizedBox(width: 8),
-                itemCount: _correctionIssues.length,
+          if (hasIssues) ...[
+            const SizedBox(width: 10),
+            Text(
+              _correctionIssueCountLabel(),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.error,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],
+          const Spacer(),
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: _correctionOutputController,
+            builder: (context, value, _) => compact
+                ? IconButton(
+                    tooltip: 'Copy result',
+                    onPressed: value.text.isEmpty
+                        ? null
+                        : () => Clipboard.setData(
+                            ClipboardData(text: value.text),
+                          ),
+                    icon: const Icon(Icons.copy_outlined, size: 20),
+                  )
+                : OutlinedButton.icon(
+                    onPressed: value.text.isEmpty
+                        ? null
+                        : () => Clipboard.setData(
+                            ClipboardData(text: value.text),
+                          ),
+                    icon: const Icon(Icons.copy_outlined, size: 18),
+                    label: const Text('Copy'),
+                  ),
+          ),
         ],
+      ),
+      footer: hasIssues
+          ? _correctionIssuesPanel(compact: compact || tightHeight)
+          : null,
+      child: TextField(
+        key: const ValueKey('correction-output-editor'),
+        controller: _correctionOutputController,
+        expands: true,
+        minLines: null,
+        maxLines: null,
+        textAlignVertical: TextAlignVertical.top,
+        style: TextStyle(
+          fontSize: widget.settings.editorFontSize,
+          height: 1.65,
+        ),
+        decoration: const InputDecoration(
+          hintText: 'The corrected or rewritten text will appear here…',
+          filled: true,
+          fillColor: Colors.transparent,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          contentPadding: EdgeInsets.fromLTRB(20, 18, 20, 18),
+        ),
+      ),
+    );
+  }
+
+  Widget _correctionIssuesPanel({required bool compact}) {
+    if (compact) {
+      return SizedBox(
+        height: 48,
+        child: ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          scrollDirection: Axis.horizontal,
+          itemCount: _correctionIssues.length,
+          separatorBuilder: (context, index) => const SizedBox(width: 6),
+          itemBuilder: (context, index) {
+            final issue = _correctionIssues[index];
+            return Chip(
+              avatar: const Icon(Icons.error_outline, size: 16),
+              label: Text(
+                issue.originalText,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            );
+          },
+        ),
+      );
+    }
+    return SizedBox(
+      height: 132,
+      child: ListView.separated(
+        padding: const EdgeInsets.all(10),
+        scrollDirection: Axis.horizontal,
+        itemBuilder: (context, index) => SizedBox(
+          width: 320,
+          child: CorrectionIssueCard(issue: _correctionIssues[index]),
+        ),
+        separatorBuilder: (context, index) => const SizedBox(width: 8),
+        itemCount: _correctionIssues.length,
       ),
     );
   }
@@ -1201,127 +2082,228 @@ class _MainShellState extends State<MainShell> {
     final formats = DocumentProcessingService.availableExportFormats(
       hasSpreadsheetInput: hasSpreadsheet,
     );
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 900;
+        final padding = compact ? 12.0 : 20.0;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            padding,
+            compact ? 10 : 20,
+            padding,
+            compact ? 10 : 16,
+          ),
+          child: Column(
             children: [
-              FilledButton.icon(
-                onPressed: _pickDocumentFiles,
-                icon: const Icon(Icons.note_add_outlined),
-                label: const Text('Add files'),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: _pickDocumentFolder,
-                icon: const Icon(Icons.create_new_folder_outlined),
-                label: const Text('Add folder'),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: _pickOutputFolder,
-                icon: const Icon(Icons.folder_open),
-                label: const Text('Output folder'),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _documentOutputDirectory ?? 'No output folder selected',
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+              Expanded(flex: 56, child: _documentIntakePane(compact: compact)),
+              SizedBox(height: compact ? 10 : 18),
+              _documentOptionsBridge(compact: compact, formats: formats),
+              SizedBox(height: compact ? 12 : 20),
+              Expanded(flex: 44, child: _documentResultsPane(compact: compact)),
             ],
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              FilterChip(
-                selected: _documentOptions.shouldCorrect,
-                label: const Text('Correct'),
-                onSelected: (value) => setState(
-                  () => _documentOptions = _documentOptions.copyWith(
-                    shouldCorrect: value,
+        );
+      },
+    );
+  }
+
+  Widget _documentIntakePane({required bool compact}) {
+    return DropTarget(
+      key: const ValueKey('document-drop-target'),
+      onDragDone: (details) =>
+          _addDocumentPaths(details.files.map((file) => file.path).toList()),
+      child: AbyssLPane(
+        key: const ValueKey('document-intake-pane'),
+        headerHeight: compact ? 96 : 100,
+        header: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Row(
+              children: [
+                if (compact)
+                  IconButton.filled(
+                    tooltip: 'Add files',
+                    onPressed: _pickDocumentFiles,
+                    icon: const Icon(Icons.note_add_outlined),
+                  )
+                else
+                  FilledButton.icon(
+                    onPressed: _pickDocumentFiles,
+                    icon: const Icon(Icons.note_add_outlined, size: 18),
+                    label: const Text('Add files'),
                   ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              FilterChip(
-                selected: _documentOptions.shouldTranslate,
-                label: const Text('Translate'),
-                onSelected: (value) => setState(
-                  () => _documentOptions = _documentOptions.copyWith(
-                    shouldTranslate: value,
+                const SizedBox(width: 8),
+                if (compact)
+                  IconButton.outlined(
+                    tooltip: 'Add folder',
+                    onPressed: _pickDocumentFolder,
+                    icon: const Icon(Icons.create_new_folder_outlined),
+                  )
+                else
+                  OutlinedButton.icon(
+                    onPressed: _pickDocumentFolder,
+                    icon: const Icon(
+                      Icons.create_new_folder_outlined,
+                      size: 18,
+                    ),
+                    label: const Text('Add folder'),
                   ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 180,
-                child: _enumDropdown(
-                  label: 'Export',
-                  value: _documentOptions.exportFormat,
-                  values: formats,
-                  text: (value) => value.label,
-                  onChanged: (value) => setState(
-                    () => _documentOptions = _documentOptions.copyWith(
-                      exportFormat: value,
+                const SizedBox(width: 8),
+                if (compact)
+                  IconButton.outlined(
+                    tooltip: 'Output folder',
+                    onPressed: _pickOutputFolder,
+                    icon: const Icon(Icons.folder_open_outlined),
+                  )
+                else
+                  OutlinedButton.icon(
+                    onPressed: _pickOutputFolder,
+                    icon: const Icon(Icons.folder_open_outlined, size: 18),
+                    label: const Text('Output folder'),
+                  ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _documentOutputDirectory ?? 'No output folder selected',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _documentInstructionController,
-                  decoration: const InputDecoration(
-                    labelText: 'Document instruction',
+                if (_documentJobs.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    '${_documentJobs.length} queued',
+                    style: Theme.of(context).textTheme.labelMedium,
                   ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                onPressed: _isBusy ? null : _processDocuments,
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('Process'),
-              ),
-              if (_isBusy) ...[
-                const SizedBox(width: 8),
-                _cancelRequestButton(),
+                ],
               ],
-            ],
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: DropTarget(
-              onDragDone: (details) => _addDocumentPaths(
-                details.files.map((file) => file.path).toList(),
-              ),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                  ),
-                  borderRadius: BorderRadius.circular(8),
+            ),
+            const SizedBox(height: 7),
+            SizedBox(
+              height: 38,
+              child: TextField(
+                key: const ValueKey('document-instruction'),
+                controller: _documentInstructionController,
+                decoration: const InputDecoration(
+                  hintText: 'Optional instruction for all documents…',
+                  prefixIcon: Icon(Icons.tune, size: 18),
+                  isDense: true,
                 ),
-                child: Row(
-                  children: [
-                    Expanded(child: _documentJobList()),
-                    const VerticalDivider(width: 1),
-                    Expanded(child: _documentResultList()),
-                  ],
+              ),
+            ),
+          ],
+        ),
+        child: _documentJobList(),
+      ),
+    );
+  }
+
+  Widget _documentOptionsBridge({
+    required bool compact,
+    required List<DocumentExportFormat> formats,
+  }) {
+    final brightness = Theme.of(context).brightness;
+    return Container(
+      key: const ValueKey('document-options-bridge'),
+      height: compact ? 60 : 66,
+      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
+      decoration: BoxDecoration(
+        color: AbyssLPalette.surfaceFor(brightness),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AbyssLPalette.outlineFor(brightness)),
+      ),
+      child: Row(
+        children: [
+          FilterChip(
+            key: const ValueKey('document-correct-toggle'),
+            selected: _documentOptions.shouldCorrect,
+            avatar: const Icon(Icons.spellcheck, size: 17),
+            label: Text(compact ? 'Correct' : 'Correct text'),
+            onSelected: (value) => setState(
+              () => _documentOptions = _documentOptions.copyWith(
+                shouldCorrect: value,
+              ),
+            ),
+          ),
+          const SizedBox(width: 7),
+          FilterChip(
+            key: const ValueKey('document-translate-toggle'),
+            selected: _documentOptions.shouldTranslate,
+            avatar: const Icon(Icons.translate, size: 17),
+            label: const Text('Translate'),
+            onSelected: (value) => setState(
+              () => _documentOptions = _documentOptions.copyWith(
+                shouldTranslate: value,
+              ),
+            ),
+          ),
+          SizedBox(width: compact ? 7 : 12),
+          SizedBox(
+            width: compact ? 132 : 170,
+            child: _enumDropdown(
+              label: 'Export',
+              value: _documentOptions.exportFormat,
+              values: formats,
+              text: (value) => value.label,
+              onChanged: (value) => setState(
+                () => _documentOptions = _documentOptions.copyWith(
+                  exportFormat: value,
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          LinearProgressIndicator(
-            value: _documentProgress.total == 0
-                ? 0
-                : _documentProgress.completed / _documentProgress.total,
-          ),
+          if (!compact) ...[
+            const SizedBox(width: 12),
+            Text(
+              _documentProgress.total == 0
+                  ? 'Ready'
+                  : '${_documentProgress.completed} / ${_documentProgress.total}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+          const Spacer(),
+          if (_isBusy) _cancelRequestButton(),
         ],
       ),
+    );
+  }
+
+  Widget _documentResultsPane({required bool compact}) {
+    final progress = _documentProgress.total == 0
+        ? 0.0
+        : _documentProgress.completed / _documentProgress.total;
+    return AbyssLPane(
+      key: const ValueKey('document-results-pane'),
+      header: Row(
+        children: [
+          const AbyssLSectionLabel(
+            'Processing results',
+            color: AbyssLPalette.blue,
+          ),
+          const Spacer(),
+          if (_documentProgress.total > 0) ...[
+            SizedBox(
+              width: compact ? 86 : 140,
+              child: LinearProgressIndicator(value: progress),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              '${_documentProgress.completed} / ${_documentProgress.total}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ] else
+            Text(
+              'Results appear here',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+        ],
+      ),
+      child: _documentResultList(),
     );
   }
 
@@ -1435,17 +2417,20 @@ class SettingsDialog extends StatefulWidget {
     required this.settings,
     required this.apiClient,
     required this.onSaved,
+    this.updateService,
   });
 
   final AppSettingsStore settings;
   final AbyssLApiClient apiClient;
   final Future<void> Function() onSaved;
+  final AppUpdateService? updateService;
 
   @override
   State<SettingsDialog> createState() => _SettingsDialogState();
 }
 
 class _SettingsDialogState extends State<SettingsDialog> {
+  late final AppUpdateService _updateService;
   late final TextEditingController _apiKey;
   late final TextEditingController _serverHost;
   late final TextEditingController _serverPort;
@@ -1468,10 +2453,19 @@ class _SettingsDialogState extends State<SettingsDialog> {
   ];
   var _message = '';
   var _testing = false;
+  var _settingsSection = 0;
+  AppBuildInfo? _appBuildInfo;
+  UpdateCheckResult? _updateCheckResult;
+  var _aboutStatus =
+      'Check GitHub to see whether a newer release is available.';
+  var _loadingAppInfo = false;
+  var _checkingForUpdates = false;
+  var _startingUpdate = false;
 
   @override
   void initState() {
     super.initState();
+    _updateService = widget.updateService ?? GitHubAppUpdateService();
     final settings = widget.settings;
     _apiKey = TextEditingController(text: settings.apiKey);
     _serverHost = TextEditingController(text: settings.serverHost);
@@ -1782,174 +2776,603 @@ class _SettingsDialogState extends State<SettingsDialog> {
     });
   }
 
+  void _selectSettingsSection(int index) {
+    setState(() => _settingsSection = index);
+    if (index == 3) {
+      unawaited(_loadAppBuildInfo());
+    }
+  }
+
+  Future<AppBuildInfo?> _loadAppBuildInfo() async {
+    if (_appBuildInfo != null) return _appBuildInfo;
+    if (_loadingAppInfo) return null;
+    setState(() => _loadingAppInfo = true);
+    try {
+      final buildInfo = await _updateService.loadInstalledBuild();
+      if (!mounted) return buildInfo;
+      setState(() {
+        _appBuildInfo = buildInfo;
+        _aboutStatus =
+            'Installed version ${buildInfo.displayVersion}. Check GitHub for updates.';
+      });
+      return buildInfo;
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _aboutStatus = 'Could not read the installed app version: $error';
+        });
+      }
+      return null;
+    } finally {
+      if (mounted) setState(() => _loadingAppInfo = false);
+    }
+  }
+
+  Future<void> _checkForUpdates() async {
+    if (_checkingForUpdates || _startingUpdate) return;
+    var buildInfo = _appBuildInfo;
+    buildInfo ??= await _loadAppBuildInfo();
+    if (buildInfo == null || !mounted) return;
+    setState(() {
+      _checkingForUpdates = true;
+      _updateCheckResult = null;
+      _aboutStatus = 'Checking the latest published GitHub release…';
+    });
+    try {
+      final result = await _updateService.checkForUpdates(buildInfo);
+      if (!mounted) return;
+      setState(() {
+        _updateCheckResult = result;
+        _aboutStatus = switch (result.kind) {
+          UpdateCheckKind.noPublishedRelease =>
+            'No AbyssL release has been published on GitHub yet.',
+          UpdateCheckKind.upToDate =>
+            'AbyssL ${buildInfo!.version} is the newest published version.',
+          UpdateCheckKind.updateAvailable =>
+            'AbyssL ${result.release!.version} is available. The signed update can be downloaded and installed automatically.',
+          UpdateCheckKind.releaseNotReady =>
+            'AbyssL ${result.release!.version} is published, but its signed macOS update files are not available yet.',
+        };
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _aboutStatus = '$error';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _checkingForUpdates = false);
+    }
+  }
+
+  Future<void> _startAutomaticUpdate() async {
+    if (_startingUpdate || _checkingForUpdates) return;
+    setState(() {
+      _startingUpdate = true;
+      _aboutStatus =
+          'Opening the secure macOS updater. It will verify, install, and relaunch AbyssL.';
+    });
+    try {
+      await _updateService.startAutomaticInstall();
+    } catch (error) {
+      if (mounted) setState(() => _aboutStatus = '$error');
+    } finally {
+      if (mounted) setState(() => _startingUpdate = false);
+    }
+  }
+
+  Future<void> _openWebsite() async {
+    try {
+      await _updateService.openWebsite();
+    } catch (error) {
+      if (mounted) setState(() => _aboutStatus = '$error');
+    }
+  }
+
+  Future<void> _openLatestRelease() async {
+    final release = _updateCheckResult?.release;
+    if (release == null) return;
+    try {
+      await _updateService.openRelease(release);
+    } catch (error) {
+      if (mounted) setState(() => _aboutStatus = '$error');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = widget.settings;
-    return AlertDialog(
-      title: const Text('Settings'),
-      content: SizedBox(
-        width: 760,
-        child: SingleChildScrollView(
+    final mediaSize = MediaQuery.sizeOf(context);
+    final compact = mediaSize.width < 900 || mediaSize.height < 650;
+    final horizontalInset = compact ? 12.0 : 28.0;
+    final verticalInset = compact ? 12.0 : 24.0;
+    final dialogWidth = (mediaSize.width - horizontalInset * 2)
+        .clamp(560.0, 980.0)
+        .toDouble();
+    final dialogHeight = (mediaSize.height - verticalInset * 2)
+        .clamp(420.0, 760.0)
+        .toDouble();
+
+    return Dialog(
+      key: const ValueKey('settings-dialog'),
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: horizontalInset,
+        vertical: verticalInset,
+      ),
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: SizedBox(
+        width: dialogWidth,
+        height: dialogHeight,
+        child: Column(
+          children: [
+            Container(
+              height: compact ? 62 : 72,
+              padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 20),
+              color: AbyssLPalette.ink,
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.settings_outlined,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Settings',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (_testing) ...[
+                    const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFFDCE2EC),
+                    ),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    key: const ValueKey('save-settings'),
+                    onPressed: _testing ? null : _save,
+                    icon: const Icon(Icons.check, size: 18),
+                    label: const Text('Save'),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: compact
+                  ? Column(
+                      children: [
+                        _settingsNavigation(compact: true),
+                        Divider(
+                          height: 1,
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.all(14),
+                            child: _settingsContent(settings),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _settingsNavigation(compact: false),
+                        VerticalDivider(
+                          width: 1,
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.all(22),
+                            child: Align(
+                              alignment: Alignment.topLeft,
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: 760,
+                                ),
+                                child: _settingsContent(settings),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+            if (settings.secureStorageWarning != null || _message.isNotEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  border: Border(
+                    top: BorderSide(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                  ),
+                ),
+                child: Text(
+                  settings.secureStorageWarning ?? _message,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: settings.secureStorageWarning != null
+                        ? Theme.of(context).colorScheme.error
+                        : Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _settingsNavigation({required bool compact}) {
+    const sections = [
+      (Icons.tune_outlined, 'General'),
+      (Icons.cloud_outlined, 'OpenAI'),
+      (Icons.memory_outlined, 'Local LLM'),
+      (Icons.info_outline_rounded, 'About'),
+    ];
+    if (compact) {
+      return SizedBox(
+        height: 52,
+        child: Row(
+          children: [
+            for (var index = 0; index < sections.length; index++)
+              Expanded(
+                child: _settingsNavButton(
+                  index: index,
+                  icon: sections[index].$1,
+                  label: sections[index].$2,
+                  compact: true,
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+    return Container(
+      width: 210,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'CONFIGURATION',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 10),
+          for (var index = 0; index < sections.length; index++) ...[
+            _settingsNavButton(
+              index: index,
+              icon: sections[index].$1,
+              label: sections[index].$2,
+              compact: false,
+            ),
+            const SizedBox(height: 6),
+          ],
+          const Spacer(),
+          Text(
+            'Changes are stored locally.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _settingsNavButton({
+    required int index,
+    required IconData icon,
+    required String label,
+    required bool compact,
+  }) {
+    final selected = _settingsSection == index;
+    return Material(
+      color: selected ? AbyssLPalette.blueSoft : Colors.transparent,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        key: ValueKey('settings-section-$index'),
+        onTap: () => _selectSettingsSection(index),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 8 : 12,
+            vertical: compact ? 10 : 12,
+          ),
+          child: Row(
+            mainAxisAlignment: compact
+                ? MainAxisAlignment.center
+                : MainAxisAlignment.start,
+            children: [
+              Icon(
+                icon,
+                size: 20,
+                color: selected
+                    ? AbyssLPalette.blue
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: selected
+                        ? AbyssLPalette.blue
+                        : Theme.of(context).colorScheme.onSurface,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _settingsContent(AppSettingsStore settings) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 160),
+      child: KeyedSubtree(
+        key: ValueKey(_settingsSection),
+        child: switch (_settingsSection) {
+          0 => _generalSettings(settings),
+          1 => _openAISettings(settings),
+          2 => _localLLMSettings(settings),
+          _ => _aboutSettings(),
+        },
+      ),
+    );
+  }
+
+  Widget _generalSettings(AppSettingsStore settings) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _settingsSectionCard(
+          icon: Icons.palette_outlined,
+          title: 'Appearance',
+          subtitle: 'Choose how AbyssL looks on this device.',
+          child: _themeModePicker(settings),
+        ),
+        const SizedBox(height: 16),
+        _settingsSectionCard(
+          icon: Icons.route_outlined,
+          title: 'Default provider',
+          subtitle: 'Select the service used for new requests.',
+          child: _settingsRow([
+            DropdownButtonFormField<TranslationProvider>(
+              key: ValueKey(settings.selectedProvider),
+              initialValue: settings.selectedProvider,
+              decoration: const InputDecoration(labelText: 'Provider'),
+              items: TranslationProvider.values
+                  .map(
+                    (provider) => DropdownMenuItem(
+                      value: provider,
+                      child: Text(provider.label),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  settings.update(
+                    (settings) => settings.selectedProvider = value,
+                  );
+                }
+              },
+            ),
+            DropdownButtonFormField<OpenAIModel>(
+              key: ValueKey(settings.selectedModel),
+              initialValue: settings.selectedModel,
+              decoration: const InputDecoration(labelText: 'OpenAI model'),
+              items: OpenAIModel.values
+                  .map(
+                    (model) =>
+                        DropdownMenuItem(value: model, child: Text(model.id)),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  settings.update((settings) => settings.selectedModel = value);
+                }
+              },
+            ),
+          ]),
+        ),
+        const SizedBox(height: 16),
+        _settingsSectionCard(
+          icon: Icons.text_fields_outlined,
+          title: 'Editor and capture',
+          subtitle: 'Tune text size and the global capture shortcut.',
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 children: [
-                  Expanded(
-                    child: DropdownButtonFormField<TranslationProvider>(
-                      key: ValueKey(settings.selectedProvider),
-                      initialValue: settings.selectedProvider,
-                      decoration: const InputDecoration(labelText: 'Provider'),
-                      items: TranslationProvider.values
-                          .map(
-                            (provider) => DropdownMenuItem(
-                              value: provider,
-                              child: Text(provider.label),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          settings.update(
-                            (settings) => settings.selectedProvider = value,
-                          );
-                        }
-                      },
-                    ),
+                  Text(
+                    'Editor font size',
+                    style: Theme.of(context).textTheme.labelLarge,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: DropdownButtonFormField<OpenAIModel>(
-                      key: ValueKey(settings.selectedModel),
-                      initialValue: settings.selectedModel,
-                      decoration: const InputDecoration(
-                        labelText: 'OpenAI model',
-                      ),
-                      items: OpenAIModel.values
-                          .map(
-                            (model) => DropdownMenuItem(
-                              value: model,
-                              child: Text(model.id),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          settings.update(
-                            (settings) => settings.selectedModel = value,
-                          );
-                        }
-                      },
-                    ),
+                  const Spacer(),
+                  Text(
+                    settings.editorFontSize.toStringAsFixed(0),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelLarge?.copyWith(color: AbyssLPalette.blue),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              _themeModePicker(settings),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _serverHost,
-                      decoration: const InputDecoration(
-                        labelText: 'OpenAI host',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 120,
-                    child: TextField(
-                      controller: _serverPort,
-                      decoration: const InputDecoration(labelText: 'Port'),
-                      keyboardType: TextInputType.number,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 140,
-                    child: _protocolDropdown(
-                      value: settings.useHTTPS,
-                      onChanged: (value) => settings.update(
-                        (settings) => settings.useHTTPS = value,
-                      ),
-                    ),
-                  ),
-                ],
+              Slider(
+                value: settings.editorFontSize,
+                min: AppSettingsStore.minimumEditorFontSize,
+                max: AppSettingsStore.maximumEditorFontSize,
+                divisions: 18,
+                label: 'Font ${settings.editorFontSize.toStringAsFixed(0)}',
+                onChanged: (value) => settings.update(
+                  (settings) => settings.editorFontSize = value,
+                ),
               ),
+              const SizedBox(height: 8),
+              _settingsRow([
+                DropdownButtonFormField<TranslationCaptureModifier>(
+                  key: ValueKey(settings.captureShortcutModifier),
+                  initialValue: settings.captureShortcutModifier,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Capture modifier',
+                  ),
+                  items: TranslationCaptureModifier.values
+                      .map(
+                        (modifier) => DropdownMenuItem(
+                          value: modifier,
+                          child: Text(modifier.label),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      settings.update(
+                        (settings) => settings.captureShortcutModifier = value,
+                      );
+                    }
+                  },
+                ),
+                TextField(
+                  controller: _captureKey,
+                  decoration: const InputDecoration(labelText: 'Capture key'),
+                ),
+              ]),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _openAISettings(AppSettingsStore settings) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _settingsSectionCard(
+          icon: Icons.cloud_outlined,
+          title: 'OpenAI connection',
+          subtitle: 'Configure the API endpoint and credentials.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _settingsRow([
+                TextField(
+                  controller: _serverHost,
+                  decoration: const InputDecoration(labelText: 'OpenAI host'),
+                ),
+                TextField(
+                  controller: _serverPort,
+                  decoration: const InputDecoration(labelText: 'Port'),
+                  keyboardType: TextInputType.number,
+                ),
+                _protocolDropdown(
+                  value: settings.useHTTPS,
+                  onChanged: (value) =>
+                      settings.update((settings) => settings.useHTTPS = value),
+                ),
+              ]),
               const SizedBox(height: 12),
               TextField(
                 controller: _apiKey,
                 decoration: const InputDecoration(labelText: 'OpenAI API key'),
                 obscureText: true,
               ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _localHost,
-                      decoration: const InputDecoration(
-                        labelText: 'Local host',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 120,
-                    child: TextField(
-                      controller: _localPort,
-                      decoration: const InputDecoration(labelText: 'Port'),
-                      keyboardType: TextInputType.number,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 140,
-                    child: _protocolDropdown(
-                      value: settings.localUseHTTPS,
-                      onChanged: (value) => settings.update(
-                        (settings) => settings.localUseHTTPS = value,
-                      ),
-                    ),
-                  ),
-                ],
+              const SizedBox(height: 14),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: _testing
+                      ? null
+                      : () => _testConnection(TranslationProvider.openAI),
+                  icon: const Icon(Icons.wifi_tethering, size: 18),
+                  label: const Text('Test OpenAI'),
+                ),
               ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _localLLMSettings(AppSettingsStore settings) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _settingsSectionCard(
+          icon: Icons.dns_outlined,
+          title: 'Local model connection',
+          subtitle: 'Connect AbyssL to an OpenAI-compatible local server.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _settingsRow([
+                TextField(
+                  controller: _localHost,
+                  decoration: const InputDecoration(labelText: 'Local host'),
+                ),
+                TextField(
+                  controller: _localPort,
+                  decoration: const InputDecoration(labelText: 'Port'),
+                  keyboardType: TextInputType.number,
+                ),
+                _protocolDropdown(
+                  value: settings.localUseHTTPS,
+                  onChanged: (value) => settings.update(
+                    (settings) => settings.localUseHTTPS = value,
+                  ),
+                ),
+              ]),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _localModel,
-                      decoration: const InputDecoration(
-                        labelText: 'Local model',
-                      ),
-                    ),
+              _settingsRow([
+                TextField(
+                  controller: _localModel,
+                  decoration: const InputDecoration(labelText: 'Local model'),
+                ),
+                TextField(
+                  controller: _timeout,
+                  decoration: const InputDecoration(
+                    labelText: 'Timeout seconds',
                   ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 140,
-                    child: OutlinedButton(
-                      onPressed: _testing
-                          ? null
-                          : _detectLocalModelAndReasoning,
-                      child: const Text('Detect Local'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 160,
-                    child: TextField(
-                      controller: _timeout,
-                      decoration: const InputDecoration(
-                        labelText: 'Timeout seconds',
-                      ),
-                      keyboardType: TextInputType.number,
-                    ),
-                  ),
-                ],
-              ),
+                  keyboardType: TextInputType.number,
+                ),
+              ]),
               if (_localModels.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 _localModelDropdown(),
@@ -1960,31 +3383,59 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 decoration: const InputDecoration(labelText: 'Local API key'),
                 obscureText: true,
               ),
-              const SizedBox(height: 12),
-              Row(
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  Expanded(
-                    child: _reasoningDropdown(
-                      label: 'Reasoning value ON',
-                      controller: _reasoningOn,
-                    ),
+                  OutlinedButton.icon(
+                    onPressed: _testing ? null : _detectLocalModelAndReasoning,
+                    icon: const Icon(Icons.radar, size: 18),
+                    label: const Text('Detect Local'),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _reasoningDropdown(
-                      label: 'Reasoning value OFF',
-                      controller: _reasoningOff,
-                    ),
+                  OutlinedButton.icon(
+                    onPressed: _testing
+                        ? null
+                        : () => _testConnection(TranslationProvider.localLLM),
+                    icon: const Icon(Icons.wifi_tethering, size: 18),
+                    label: const Text('Test Local'),
                   ),
-                  const SizedBox(width: 8),
-                  OutlinedButton(
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _settingsSectionCard(
+          icon: Icons.psychology_outlined,
+          title: 'Reasoning',
+          subtitle: 'Map model-specific reasoning values.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _settingsRow([
+                _reasoningDropdown(
+                  label: 'Reasoning value ON',
+                  controller: _reasoningOn,
+                ),
+                _reasoningDropdown(
+                  label: 'Reasoning value OFF',
+                  controller: _reasoningOff,
+                ),
+              ]),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  OutlinedButton.icon(
                     onPressed: _testing ? null : _refreshReasoningOptions,
-                    child: const Text('Refresh'),
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Refresh'),
                   ),
-                  const SizedBox(width: 8),
                   FilterChip(
                     selected: settings.reasoningEnabled,
-                    label: const Text('Reasoning'),
+                    label: const Text('Reasoning enabled'),
                     onSelected: (value) => settings.update((settings) {
                       settings.reasoningEnabled = value;
                       settings.rememberReasoningSettingsForModel(
@@ -1998,96 +3449,287 @@ class _SettingsDialogState extends State<SettingsDialog> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: Slider(
-                      value: settings.editorFontSize,
-                      min: AppSettingsStore.minimumEditorFontSize,
-                      max: AppSettingsStore.maximumEditorFontSize,
-                      divisions: 18,
-                      label:
-                          'Font ${settings.editorFontSize.toStringAsFixed(0)}',
-                      onChanged: (value) => settings.update(
-                        (settings) => settings.editorFontSize = value,
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 160,
-                    child: DropdownButtonFormField<TranslationCaptureModifier>(
-                      key: ValueKey(settings.captureShortcutModifier),
-                      initialValue: settings.captureShortcutModifier,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Capture modifier',
-                      ),
-                      items: TranslationCaptureModifier.values
-                          .map(
-                            (modifier) => DropdownMenuItem(
-                              value: modifier,
-                              child: Text(
-                                modifier.label,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          settings.update(
-                            (settings) =>
-                                settings.captureShortcutModifier = value,
-                          );
-                        }
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 100,
-                    child: TextField(
-                      controller: _captureKey,
-                      decoration: const InputDecoration(labelText: 'Key'),
-                    ),
-                  ),
-                ],
-              ),
-              if (settings.secureStorageWarning != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  settings.secureStorageWarning!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              ],
-              if (_message.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Align(alignment: Alignment.centerLeft, child: Text(_message)),
-              ],
             ],
           ),
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: _testing
-              ? null
-              : () => _testConnection(TranslationProvider.openAI),
-          child: const Text('Test OpenAI'),
-        ),
-        TextButton(
-          onPressed: _testing
-              ? null
-              : () => _testConnection(TranslationProvider.localLLM),
-          child: const Text('Test Local'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(onPressed: _save, child: const Text('Save')),
       ],
+    );
+  }
+
+  Widget _aboutSettings() {
+    final buildInfo = _appBuildInfo;
+    final updateResult = _updateCheckResult;
+    final release = updateResult?.release;
+    final updateAvailable =
+        updateResult?.kind == UpdateCheckKind.updateAvailable;
+    final showReleaseButton =
+        release != null &&
+        updateResult?.kind == UpdateCheckKind.releaseNotReady;
+
+    return Column(
+      key: const ValueKey('settings-about-content'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _settingsSectionCard(
+          icon: Icons.info_outline_rounded,
+          title: 'About AbyssL',
+          subtitle: 'Application details, project website, and updates.',
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 520;
+              final logo = Container(
+                width: 104,
+                height: 104,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AbyssLPalette.blueSoft,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Image.asset(
+                  'assets/branding/abyssl_mark.png',
+                  key: const ValueKey('about-logo'),
+                  semanticLabel: 'AbyssL logo',
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                ),
+              );
+              final details = Column(
+                crossAxisAlignment: compact
+                    ? CrossAxisAlignment.center
+                    : CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'AbyssL',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.4,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Developed by Daniel Mengel',
+                    key: const ValueKey('about-developer'),
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    _loadingAppInfo
+                        ? 'Version loading…'
+                        : 'Version ${buildInfo?.displayVersion ?? 'unavailable'}',
+                    key: const ValueKey('about-version'),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextButton.icon(
+                    key: const ValueKey('about-website-link'),
+                    onPressed: _openWebsite,
+                    icon: const Icon(Icons.open_in_new, size: 18),
+                    label: const Text(abyssLWebsiteUri),
+                  ),
+                ],
+              );
+              if (compact) {
+                return Column(
+                  children: [logo, const SizedBox(height: 16), details],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  logo,
+                  const SizedBox(width: 22),
+                  Expanded(child: details),
+                ],
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 16),
+        _settingsSectionCard(
+          icon: Icons.system_update_alt_rounded,
+          title: 'Software updates',
+          subtitle:
+              'Check the latest published GitHub release and install signed macOS updates securely.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Semantics(
+                liveRegion: true,
+                child: Container(
+                  key: const ValueKey('update-status'),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_checkingForUpdates || _startingUpdate)
+                        const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      else
+                        Icon(
+                          updateAvailable
+                              ? Icons.new_releases_outlined
+                              : Icons.info_outline,
+                          size: 19,
+                          color: updateAvailable
+                              ? AbyssLPalette.blue
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(_aboutStatus)),
+                    ],
+                  ),
+                ),
+              ),
+              if (release != null &&
+                  updateAvailable &&
+                  release.notes.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  release.notes,
+                  key: const ValueKey('about-release-notes'),
+                  maxLines: 6,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  OutlinedButton.icon(
+                    key: const ValueKey('check-for-updates'),
+                    onPressed:
+                        _checkingForUpdates ||
+                            _startingUpdate ||
+                            _loadingAppInfo
+                        ? null
+                        : _checkForUpdates,
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: const Text('Check for updates'),
+                  ),
+                  if (updateAvailable &&
+                      _updateService.supportsAutomaticInstall)
+                    FilledButton.icon(
+                      key: const ValueKey('install-update'),
+                      onPressed: _startingUpdate || _checkingForUpdates
+                          ? null
+                          : _startAutomaticUpdate,
+                      icon: const Icon(Icons.download_rounded, size: 18),
+                      label: const Text('Download and install…'),
+                    ),
+                  if (showReleaseButton ||
+                      (updateAvailable &&
+                          !_updateService.supportsAutomaticInstall))
+                    TextButton.icon(
+                      key: const ValueKey('open-latest-release'),
+                      onPressed: _openLatestRelease,
+                      icon: const Icon(Icons.open_in_new, size: 18),
+                      label: const Text('Open GitHub release'),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _settingsSectionCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Widget child,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: AbyssLPalette.blueSoft,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: AbyssLPalette.blue, size: 19),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Divider(
+            height: 1,
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+          const SizedBox(height: 16),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _settingsRow(List<Widget> children) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 620) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var index = 0; index < children.length; index++) ...[
+                children[index],
+                if (index != children.length - 1) const SizedBox(height: 10),
+              ],
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var index = 0; index < children.length; index++) ...[
+              Expanded(child: children[index]),
+              if (index != children.length - 1) const SizedBox(width: 10),
+            ],
+          ],
+        );
+      },
     );
   }
 
@@ -2116,8 +3758,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Appearance', style: Theme.of(context).textTheme.labelLarge),
-          const SizedBox(height: 8),
           SegmentedButton<AppThemeMode>(
             selected: {settings.themeMode},
             segments: const [
