@@ -5,7 +5,7 @@
 :icons: font
 :imagesdir: app-docs/images
 
-AbyssL Translator is a Flutter desktop app for translation, spelling correction, rewriting, and document processing through OpenAI-compatible chat-completions APIs.
+AbyssL Translator is a Flutter desktop app for translation, spelling correction, rewriting, and document processing through OpenAI-compatible Chat Completions and Anthropic-compatible Messages APIs.
 
 The maintained app path is `apps/abyssl_flutter` for macOS, Windows, and Linux.
 
@@ -19,14 +19,17 @@ image::translation-flow.svg[Translation flow, width=900]
 
 == API Compatibility
 
-AbyssL uses OpenAI-compatible endpoints only. No other API endpoints are assumed by this repository.
+AbyssL supports services, gateways, and local servers that implement one of these HTTP API formats sufficiently for text generation:
 
-* `/v1/chat/completions` for translation, correction, rewriting, and alternatives.
-* `/v1/models` for connection checks and OpenAI-compatible model lists.
-* `/api/v1/models` for LM Studio metadata when the local server provides it.
+* OpenAI-compatible Chat Completions through `/chat/completions` below the configured base URL.
+* Anthropic-compatible Messages through `/messages` below the configured base URL.
+* `/models` below the configured base URL for optional model discovery and connection checks.
+* `/api/v1/models` for optional LM Studio metadata on local OpenAI-compatible connections.
 
-For local LLMs, the app can use LM Studio metadata to detect loaded models and supported reasoning values.
-If metadata is unavailable, the user can enter the local model name and reasoning values manually.
+The base URL includes the version path, for example `https://api.openai.com/v1`, `https://api.anthropic.com/v1`, or `http://localhost:11434/v1`.
+OpenAI-compatible connections default to Bearer authentication. Anthropic-compatible connections default to `x-api-key` plus `anthropic-version: 2023-06-01`. Authentication can also be disabled for local servers.
+
+Compatibility varies between implementations. Native AWS Bedrock, Google Vertex AI, and Azure authentication or request-signing flows require a compatible gateway and are not implied by the generic HTTP adapters.
 
 == Requirements
 
@@ -37,7 +40,7 @@ Flutter desktop app:
   ** macOS host for macOS builds.
   ** Windows host for Windows builds.
   ** Linux host for Linux builds.
-* Optional: OpenAI API key.
+* Optional: API key for an OpenAI- or Anthropic-compatible cloud provider.
 * Optional: local OpenAI-compatible server such as LM Studio.
 * Optional for ODT import/export: LibreOffice `soffice`.
 * Optional for non-macOS PDF text extraction: `pdftotext` or `mutool` on `PATH`.
@@ -108,11 +111,12 @@ flutter build macos --debug
 
 Manual smoke path:
 
-. Start a local OpenAI-compatible server or configure OpenAI in `Settings`.
+. Start a compatible local server or configure an OpenAI- or Anthropic-compatible cloud endpoint in `Settings`.
 . Start the app with `flutter run -d macos`, `flutter run -d windows`, or `flutter run -d linux`.
 . Open `Settings`.
-. Select `OpenAI` or `Local LLM`.
-. For `Local LLM`, choose `HTTP` or `HTTPS`, then click `Detect Local` to load available models and reasoning metadata when available.
+. Select `OpenAI-compatible`, `Anthropic-compatible`, or `Local OpenAI-compatible`.
+. Enter a complete base URL, choose the authentication mode, and enter a model ID. For local connections, click `Detect Local` to load available models and reasoning metadata when available.
+. Run `Test connection`. This sends a minimal provider request and may be billable for cloud providers.
 . Translate a multi-paragraph source text and verify the `Translation` field keeps paragraph breaks and blank lines.
 . Open `Correction`, run `Correct`, and verify the issue count plus highlighted input/output changes.
 . Open `Documents`, add a supported file, choose an output folder, run processing, and verify progress plus the generated output file.
@@ -125,9 +129,11 @@ If secure storage is unavailable, AbyssL reports the error and does not silently
 
 Settings include:
 
-* Provider: `OpenAI` or `Local LLM`.
-* Host, port, and protocol. Local LLMs can use `HTTP` or `HTTPS`.
-* OpenAI model selection.
+* Provider: `OpenAI-compatible`, `Anthropic-compatible`, or `Local OpenAI-compatible`.
+* Complete base URL including an optional gateway path.
+* Authentication: Bearer token, `x-api-key`, or none.
+* Freely editable model ID plus optional model discovery.
+* Anthropic API version and maximum output tokens.
 * Local model detection and manual local model entry.
 * Reasoning ON/OFF values with per-model remembered settings.
 * Appearance: `System`, `Light`, or `Dark`.
@@ -147,8 +153,9 @@ Translator mode supports:
 * Clear Source and Translation.
 * Cancel the active AI request.
 
-The app requests JSON-compatible translation data from OpenAI-compatible providers.
-For local LLM compatibility, local requests use provider-specific response-format handling and retry without optional compatibility fields if the local endpoint rejects them.
+The app requests JSON-compatible translation data through the selected provider adapter.
+OpenAI-compatible requests use Chat Completions. Anthropic-compatible requests use Messages with the system prompt in the top-level `system` field and combine returned text content blocks in order.
+When a provider rejects an optional structured-output or reasoning field with a compatible 400/422 response, AbyssL retries once without that optional field. Authentication, rate-limit, and server errors are never retried automatically to avoid duplicate cost.
 
 == Correction and Rewrite Workflow
 
@@ -169,7 +176,7 @@ Correction mode supports:
 * Copy result.
 * Cancel the active AI request.
 
-== Local LLM and Reasoning
+== Local Provider and Reasoning
 
 Local model behavior:
 
@@ -182,7 +189,7 @@ Reasoning behavior:
 
 * AbyssL can read supported reasoning values from LM Studio metadata when available.
 * Reasoning settings are remembered per local model and restored when the same model is selected again.
-* For local LLMs, choosing `off` sends `reasoning_effort: "off"`.
+* For local OpenAI-compatible models, choosing `off` sends `reasoning_effort: "off"`.
 * Choosing `none` omits `reasoning_effort`.
 * If a local model does not expose reasoning metadata, set the values manually or keep reasoning disabled.
 

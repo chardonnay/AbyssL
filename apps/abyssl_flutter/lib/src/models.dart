@@ -1,13 +1,45 @@
 import 'dart:io';
 
-enum TranslationProvider {
-  openAI,
-  localLLM;
+const defaultAnthropicApiVersion = '2023-06-01';
+
+enum ApiCompatibility { openAI, anthropic }
+
+enum ApiAuthMode {
+  bearer,
+  xApiKey,
+  none;
 
   String get label => switch (this) {
-    TranslationProvider.openAI => 'OpenAI',
-    TranslationProvider.localLLM => 'Local LLM',
+    ApiAuthMode.bearer => 'Bearer token',
+    ApiAuthMode.xApiKey => 'x-api-key',
+    ApiAuthMode.none => 'No authentication',
   };
+}
+
+enum TranslationProvider {
+  openAICompatible,
+  anthropicCompatible,
+  localOpenAICompatible;
+
+  String get label => switch (this) {
+    TranslationProvider.openAICompatible => 'OpenAI-compatible',
+    TranslationProvider.anthropicCompatible => 'Anthropic-compatible',
+    TranslationProvider.localOpenAICompatible => 'Local OpenAI-compatible',
+  };
+
+  ApiCompatibility get compatibility => switch (this) {
+    TranslationProvider.openAICompatible ||
+    TranslationProvider.localOpenAICompatible => ApiCompatibility.openAI,
+    TranslationProvider.anthropicCompatible => ApiCompatibility.anthropic,
+  };
+
+  ApiAuthMode get defaultAuthMode => switch (this) {
+    TranslationProvider.openAICompatible => ApiAuthMode.bearer,
+    TranslationProvider.anthropicCompatible => ApiAuthMode.xApiKey,
+    TranslationProvider.localOpenAICompatible => ApiAuthMode.none,
+  };
+
+  bool get isLocal => this == TranslationProvider.localOpenAICompatible;
 }
 
 enum AppThemeMode {
@@ -20,26 +52,6 @@ enum AppThemeMode {
     AppThemeMode.light => 'Light',
     AppThemeMode.dark => 'Dark',
   };
-}
-
-enum OpenAIModel {
-  gpt4o('gpt-4o'),
-  gpt4oMini('gpt-4o-mini'),
-  gpt35Turbo('gpt-3.5-turbo');
-
-  const OpenAIModel(this.id);
-
-  final String id;
-
-  bool get supportsReasoningParameter => switch (this) {
-    OpenAIModel.gpt4o || OpenAIModel.gpt4oMini => true,
-    OpenAIModel.gpt35Turbo => false,
-  };
-
-  static OpenAIModel fromId(String value) => values.firstWhere(
-    (model) => model.id == value,
-    orElse: () => OpenAIModel.gpt4oMini,
-  );
 }
 
 enum TranslationLanguage {
@@ -127,6 +139,43 @@ class StyleSettings {
     complexity: complexity ?? this.complexity,
     spellingMode: spellingMode ?? this.spellingMode,
   );
+}
+
+class ProviderRequestConfig {
+  const ProviderRequestConfig({
+    required this.provider,
+    required this.baseUri,
+    required this.modelId,
+    required this.authMode,
+    required this.apiKey,
+    required this.sourceLanguage,
+    required this.targetLanguage,
+    required this.style,
+    required this.reasoningEnabled,
+    required this.reasoningEffort,
+    required this.correctionAlternativeCount,
+    this.timeout,
+    this.anthropicVersion = defaultAnthropicApiVersion,
+    this.maxOutputTokens = 4096,
+  }) : assert(maxOutputTokens > 0),
+       assert(correctionAlternativeCount > 0);
+
+  final TranslationProvider provider;
+  final Uri baseUri;
+  final String modelId;
+  final ApiAuthMode authMode;
+  final String apiKey;
+  final Duration? timeout;
+  final String anthropicVersion;
+  final int maxOutputTokens;
+  final TranslationLanguage sourceLanguage;
+  final TranslationLanguage targetLanguage;
+  final StyleSettings style;
+  final bool reasoningEnabled;
+  final String reasoningEffort;
+  final int correctionAlternativeCount;
+
+  ApiCompatibility get compatibility => provider.compatibility;
 }
 
 enum WritingStylePreset {

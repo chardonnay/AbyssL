@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -148,6 +149,94 @@ void main() {
       ],
     );
   });
+
+  for (final provider in [
+    TranslationProvider.openAICompatible,
+    TranslationProvider.anthropicCompatible,
+  ]) {
+    test('processes document text through ${provider.name}', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      final operations = <String>[];
+      unawaited(
+        server.forEach((request) async {
+          final body =
+              jsonDecode(await utf8.decoder.bind(request).join())
+                  as Map<String, Object?>;
+          final system = provider.compatibility == ApiCompatibility.openAI
+              ? '${((body['messages'] as List).first as Map)['content']}'
+              : '${body['system']}';
+          final isCorrection = system.contains('copy editor');
+          operations.add(isCorrection ? 'correct' : 'translate');
+          final content = isCorrection
+              ? jsonEncode({
+                  'corrected_text': 'Hello',
+                  'corrections': <Object?>[],
+                })
+              : jsonEncode({
+                  'translation': 'Hallo',
+                  'synonyms': <String>[],
+                  'spelling_notes': null,
+                  'revised_source': null,
+                });
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(
+            jsonEncode(
+              provider.compatibility == ApiCompatibility.openAI
+                  ? {
+                      'choices': [
+                        {
+                          'finish_reason': 'stop',
+                          'message': {'content': content},
+                        },
+                      ],
+                    }
+                  : {
+                      'content': [
+                        {'type': 'text', 'text': content},
+                      ],
+                      'stop_reason': 'end_turn',
+                    },
+            ),
+          );
+          await request.response.close();
+        }),
+      );
+
+      final result = await const DocumentProcessingService().processDocument(
+        const DocumentIR(
+          blocks: [DocumentParagraph('Helo')],
+          sourceKind: DocumentInputKind.plainText,
+        ),
+        const DocumentOperationOptions(
+          shouldCorrect: true,
+          shouldTranslate: true,
+          exportFormat: DocumentExportFormat.plainText,
+        ),
+        DocumentProcessingConfiguration(
+          requestConfig: ProviderRequestConfig(
+            provider: provider,
+            baseUri: Uri.parse('http://127.0.0.1:${server.port}'),
+            modelId: provider == TranslationProvider.anthropicCompatible
+                ? 'claude-test'
+                : 'gpt-test',
+            authMode: ApiAuthMode.none,
+            apiKey: '',
+            sourceLanguage: TranslationLanguage.automatic,
+            targetLanguage: TranslationLanguage.german,
+            style: const StyleSettings(),
+            reasoningEnabled: false,
+            reasoningEffort: 'none',
+            correctionAlternativeCount: 3,
+          ),
+          apiClient: AbyssLApiClient(),
+        ),
+      );
+
+      expect((result.blocks.single as DocumentParagraph).text, 'Hallo');
+      expect(operations, ['correct', 'translate']);
+    });
+  }
 }
 
 Future<void> _writeZip(String path, Map<String, String> entries) async {
@@ -161,19 +250,16 @@ Future<void> _writeZip(String path, Map<String, String> entries) async {
 
 class ProviderRequestConfigFixture {
   static final value = ProviderRequestConfig(
-    provider: TranslationProvider.openAI,
-    openAIBaseUri: Uri.parse('https://api.openai.com'),
-    localBaseUri: Uri.parse('http://localhost:11434'),
-    openAIApiKey: 'test',
-    localApiKey: '',
-    selectedModel: OpenAIModel.gpt4oMini,
-    localModel: '',
+    provider: TranslationProvider.openAICompatible,
+    baseUri: Uri.parse('https://api.openai.com/v1'),
+    modelId: 'gpt-4o-mini',
+    authMode: ApiAuthMode.bearer,
+    apiKey: 'test',
     sourceLanguage: TranslationLanguage.automatic,
     targetLanguage: TranslationLanguage.englishUS,
     style: const StyleSettings(),
     reasoningEnabled: false,
     reasoningEffort: 'none',
-    localRequestTimeoutSeconds: 0,
     correctionAlternativeCount: 3,
   );
 }

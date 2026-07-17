@@ -2,12 +2,17 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'anthropic_provider_adapter.dart';
 import 'models.dart';
+import 'openai_provider_adapter.dart';
 import 'prompt_builder.dart';
+import 'provider_adapter.dart';
 
 class AbyssLApiException implements Exception {
-  const AbyssLApiException(this.message);
+  const AbyssLApiException(this.message, {this.statusCode, this.responseBody});
   final String message;
+  final int? statusCode;
+  final String? responseBody;
 
   @override
   String toString() => message;
@@ -67,52 +72,6 @@ class LocalReasoningOptions {
   }
 }
 
-class ProviderRequestConfig {
-  const ProviderRequestConfig({
-    required this.provider,
-    required this.openAIBaseUri,
-    required this.localBaseUri,
-    required this.openAIApiKey,
-    required this.localApiKey,
-    required this.selectedModel,
-    required this.localModel,
-    required this.sourceLanguage,
-    required this.targetLanguage,
-    required this.style,
-    required this.reasoningEnabled,
-    required this.reasoningEffort,
-    required this.localRequestTimeoutSeconds,
-    required this.correctionAlternativeCount,
-  });
-
-  final TranslationProvider provider;
-  final Uri openAIBaseUri;
-  final Uri localBaseUri;
-  final String openAIApiKey;
-  final String localApiKey;
-  final OpenAIModel selectedModel;
-  final String localModel;
-  final TranslationLanguage sourceLanguage;
-  final TranslationLanguage targetLanguage;
-  final StyleSettings style;
-  final bool reasoningEnabled;
-  final String reasoningEffort;
-  final int localRequestTimeoutSeconds;
-  final int correctionAlternativeCount;
-
-  Uri get baseUri =>
-      provider == TranslationProvider.openAI ? openAIBaseUri : localBaseUri;
-  String get apiKey =>
-      provider == TranslationProvider.openAI ? openAIApiKey : localApiKey;
-  String get modelId => provider == TranslationProvider.openAI
-      ? selectedModel.id
-      : localModel.trim();
-  Duration? get timeout =>
-      provider == TranslationProvider.localLLM && localRequestTimeoutSeconds > 0
-      ? Duration(seconds: localRequestTimeoutSeconds)
-      : null;
-}
-
 class AbyssLApiClient {
   AbyssLApiClient({HttpClient? httpClient})
     : _httpClient = httpClient ?? HttpClient();
@@ -144,14 +103,15 @@ class AbyssLApiClient {
       throw const AbyssLApiException('Source text is empty.');
     }
     final model = await _resolveModel(config);
-    if (config.provider == TranslationProvider.openAI &&
-        config.openAIApiKey.trim().isEmpty) {
+    if (config.authMode != ApiAuthMode.none && config.apiKey.trim().isEmpty) {
       throw const AbyssLApiException('API key is missing. Add it in Settings.');
     }
 
     final payload = await _chat(
       config: config,
       model: model,
+      schemaName: 'translation',
+      schema: PromptBuilder.translationResponseSchema(),
       messages: [
         _message(
           'system',
@@ -160,7 +120,6 @@ class AbyssLApiClient {
             target: config.targetLanguage,
             style: config.style,
             reasoning: config.reasoningEnabled,
-            model: config.selectedModel,
           ),
         ),
         _message(
@@ -203,6 +162,8 @@ class AbyssLApiClient {
     final raw = await _chat(
       config: config,
       model: model,
+      schemaName: 'alternatives',
+      schema: PromptBuilder.alternativesResponseSchema(count),
       messages: [
         _message(
           'system',
@@ -240,6 +201,10 @@ class AbyssLApiClient {
     final raw = await _chat(
       config: config,
       model: model,
+      schemaName: 'writing_correction',
+      schema: PromptBuilder.correctionResponseSchema(
+        config.correctionAlternativeCount,
+      ),
       messages: [
         _message(
           'system',
@@ -280,6 +245,8 @@ class AbyssLApiClient {
     final raw = await _chat(
       config: config,
       model: model,
+      schemaName: 'writing_rewrite',
+      schema: PromptBuilder.rewriteResponseSchema(),
       messages: [
         _message(
           'system',
@@ -306,41 +273,132 @@ class AbyssLApiClient {
     required TranslationProvider provider,
     required Uri baseUri,
     required String apiKey,
+    ApiAuthMode? authMode,
+    String? modelId,
+    String anthropicVersion = defaultAnthropicApiVersion,
+    int maxOutputTokens = 64,
     Duration? timeout,
   }) async {
-    if (provider == TranslationProvider.openAI && apiKey.trim().isEmpty) {
+    final resolvedAuthMode = authMode ?? provider.defaultAuthMode;
+    if (resolvedAuthMode != ApiAuthMode.none && apiKey.trim().isEmpty) {
       throw const AbyssLApiException('API key is missing. Add it in Settings.');
     }
-    final request = await _openUrl(
-      'GET',
-      _endpoint(baseUri, ['v1', 'models']),
-      timeout,
+    final concreteModel = modelId?.trim() ?? '';
+    if (concreteModel.isNotEmpty) {
+      final config = ProviderRequestConfig(
+        provider: provider,
+        baseUri: baseUri,
+        modelId: concreteModel,
+        authMode: resolvedAuthMode,
+        apiKey: apiKey,
+        timeout: timeout,
+        anthropicVersion: anthropicVersion,
+        maxOutputTokens: maxOutputTokens,
+        sourceLanguage: TranslationLanguage.automatic,
+        targetLanguage: TranslationLanguage.englishUS,
+        style: const StyleSettings(),
+        reasoningEnabled: false,
+        reasoningEffort: 'none',
+        correctionAlternativeCount: 3,
+      );
+      await _chat(
+        config: config,
+        model: concreteModel,
+        messages: const [
+          ProviderMessage(
+            'user',
+            'Return exactly one JSON object with the boolean field "ok" set to true.',
+          ),
+        ],
+        schemaName: 'connection_test',
+        schema: const {
+          'type': 'object',
+          'additionalProperties': false,
+          'properties': {
+            'ok': {'type': 'boolean'},
+          },
+          'required': ['ok'],
+        },
+      );
+      return;
+    }
+    final adapter = _adapterFor(provider.compatibility);
+    final modelRequest = adapter.buildModelRequest(
+      baseUri: baseUri,
+      authMode: resolvedAuthMode,
+      apiKey: apiKey,
+      anthropicVersion: anthropicVersion,
     );
-    _applyAuth(request, apiKey);
+    final request = await _openUrl('GET', modelRequest.uri, timeout);
+    _applyHeaders(request, modelRequest.headers);
     final response = await _close(request, timeout);
-    await _readCheckedResponse(response);
+    await _readCheckedResponse(response, timeout: timeout);
+  }
+
+  Future<List<LocalLLMModel>> fetchModelCatalog({
+    required TranslationProvider provider,
+    required Uri baseUri,
+    required String apiKey,
+    ApiAuthMode? authMode,
+    String anthropicVersion = defaultAnthropicApiVersion,
+    Duration? timeout,
+  }) async {
+    final resolvedAuthMode = authMode ?? provider.defaultAuthMode;
+    if (resolvedAuthMode != ApiAuthMode.none && apiKey.trim().isEmpty) {
+      throw const AbyssLApiException('API key is missing. Add it in Settings.');
+    }
+    final adapter = _adapterFor(provider.compatibility);
+    final modelRequest = adapter.buildModelRequest(
+      baseUri: baseUri,
+      authMode: resolvedAuthMode,
+      apiKey: apiKey,
+      anthropicVersion: anthropicVersion,
+    );
+    final request = await _openUrl('GET', modelRequest.uri, timeout);
+    _applyHeaders(request, modelRequest.headers);
+    final response = await _close(request, timeout);
+    final body = await _readCheckedResponse(response, timeout: timeout);
+    try {
+      return adapter
+          .parseModelIds(body)
+          .map(
+            (id) => LocalLLMModel(
+              id: id,
+              requestName: id,
+              name: id,
+              isLoaded: false,
+            ),
+          )
+          .toList(growable: false);
+    } on ProviderProtocolException catch (error) {
+      throw AbyssLApiException(error.message);
+    }
   }
 
   Future<List<String>> fetchLocalModels({
     required Uri baseUri,
     required String apiKey,
+    ApiAuthMode? authMode,
     Duration? timeout,
   }) async => (await fetchLocalModelCatalog(
     baseUri: baseUri,
     apiKey: apiKey,
+    authMode: authMode,
     timeout: timeout,
   )).map((model) => model.requestName).toList(growable: false);
 
   Future<List<LocalLLMModel>> fetchLocalModelCatalog({
     required Uri baseUri,
     required String apiKey,
+    ApiAuthMode? authMode,
     Duration? timeout,
   }) async {
+    final resolvedAuthMode = authMode ?? _legacyAuthModeForKey(apiKey);
     try {
       final decoded = await _fetchJsonObject(
-        baseUri: baseUri,
-        segments: const ['api', 'v1', 'models'],
+        uri: _localMetadataEndpoint(baseUri),
         apiKey: apiKey,
+        authMode: resolvedAuthMode,
         timeout: timeout,
       );
       final metadataModels = _parseLocalMetadataModelCatalog(decoded);
@@ -351,6 +409,7 @@ class AbyssLApiClient {
     return _fetchOpenAICompatibleModelCatalog(
       baseUri: baseUri,
       apiKey: apiKey,
+      authMode: resolvedAuthMode,
       timeout: timeout,
     );
   }
@@ -359,12 +418,14 @@ class AbyssLApiClient {
     required Uri baseUri,
     required String apiKey,
     required String model,
+    ApiAuthMode? authMode,
     Duration? timeout,
   }) async {
+    final resolvedAuthMode = authMode ?? _legacyAuthModeForKey(apiKey);
     final decoded = await _fetchJsonObject(
-      baseUri: baseUri,
-      segments: const ['api', 'v1', 'models'],
+      uri: _localMetadataEndpoint(baseUri),
       apiKey: apiKey,
+      authMode: resolvedAuthMode,
       timeout: timeout,
     );
     final modelName = _requestModelName(model);
@@ -402,106 +463,91 @@ class AbyssLApiClient {
   Future<String> _chat({
     required ProviderRequestConfig config,
     required String model,
-    required List<Map<String, String>> messages,
+    required List<ProviderMessage> messages,
+    required String schemaName,
+    required Map<String, Object?> schema,
   }) async {
-    final body = <String, Object?>{
-      'model': model,
-      'messages': messages,
-      'temperature': 0.2,
-      'response_format': {'type': _responseFormatType(config.provider)},
-    };
-    final effort = _requestReasoningEffort(
-      provider: config.provider,
-      reasoning: config.reasoningEnabled,
-      reasoningEffort: config.reasoningEffort,
-    );
-    if (effort != null) {
-      body['reasoning_effort'] = effort;
+    if (config.authMode != ApiAuthMode.none && config.apiKey.trim().isEmpty) {
+      throw const AbyssLApiException('API key is missing. Add it in Settings.');
     }
+    final adapter = _adapterFor(config.compatibility);
+    var wireRequest = adapter.buildChatRequest(
+      config: config,
+      model: model,
+      messages: messages,
+      schemaName: schemaName,
+      schema: schema,
+    );
 
     try {
-      return await _sendChatRequest(config: config, body: body);
+      final responseBody = await _sendWireRequest(
+        request: wireRequest,
+        timeout: config.timeout,
+      );
+      return adapter.parseChatContent(responseBody);
     } on AbyssLApiException catch (error) {
-      final compatibilityBody = Map<String, Object?>.from(body);
-      final removedFields = <String>[];
-      if (compatibilityBody.remove('reasoning_effort') != null) {
-        removedFields.add('reasoning_effort');
-      }
-      if (compatibilityBody.remove('response_format') != null) {
-        removedFields.add('response_format');
-      }
-      if (config.provider != TranslationProvider.localLLM ||
-          removedFields.isEmpty) {
-        rethrow;
-      }
+      final unsupportedFields = adapter.unknownOptionalFields(
+        statusCode: error.statusCode ?? 0,
+        responseBody: error.responseBody ?? error.message,
+        candidates: wireRequest.optionalFields,
+      );
+      if (unsupportedFields.isEmpty) rethrow;
+      wireRequest = wireRequest.withoutOptionalFields(unsupportedFields);
 
       try {
-        return await _sendChatRequest(config: config, body: compatibilityBody);
+        final responseBody = await _sendWireRequest(
+          request: wireRequest,
+          timeout: config.timeout,
+        );
+        return adapter.parseChatContent(responseBody);
       } on AbyssLApiException catch (retryError) {
         throw AbyssLApiException(
-          '$retryError Compatibility retry without ${removedFields.join(' and ')} also failed. First error: $error',
+          '$retryError Compatibility retry without ${unsupportedFields.join(' and ')} also failed. First error: $error',
+          statusCode: retryError.statusCode,
+          responseBody: retryError.responseBody,
         );
+      } on ProviderProtocolException catch (retryError) {
+        throw AbyssLApiException(retryError.message);
       }
+    } on ProviderProtocolException catch (error) {
+      throw AbyssLApiException(error.message);
     }
   }
 
-  Future<String> _sendChatRequest({
-    required ProviderRequestConfig config,
-    required Map<String, Object?> body,
+  Future<String> _sendWireRequest({
+    required ProviderWireRequest request,
+    required Duration? timeout,
   }) async {
-    final String responseBody;
     try {
       _throwIfCancelled();
-      final request = await _openUrl(
-        'POST',
-        _endpoint(config.baseUri, ['v1', 'chat', 'completions']),
-        config.timeout,
+      final httpRequest = await _openUrl('POST', request.uri, timeout);
+      _throwIfCancelled();
+      _applyHeaders(httpRequest, request.headers);
+      httpRequest.write(jsonEncode(request.body));
+      final response = await _close(httpRequest, timeout);
+      _throwIfCancelled();
+      final responseBody = await _readCheckedResponse(
+        response,
+        timeout: timeout,
       );
       _throwIfCancelled();
-      request.headers.contentType = ContentType.json;
-      _applyAuth(request, config.apiKey);
-      request.write(jsonEncode(body));
-      final response = await _close(request, config.timeout);
-      _throwIfCancelled();
-      responseBody = await _readCheckedResponse(response);
-      _throwIfCancelled();
+      return responseBody;
     } on AbyssLRequestCancelledException {
       rethrow;
     } catch (_) {
       _throwIfCancelled();
       rethrow;
     }
-    final decoded = jsonDecode(responseBody);
-    if (decoded is! Map<String, Object?>) {
-      throw const AbyssLApiException(
-        'Invalid response from chat completions endpoint.',
-      );
-    }
-    final choices = decoded['choices'];
-    if (choices is List && choices.isNotEmpty) {
-      final first = choices.first;
-      if (first is Map<String, Object?>) {
-        final message = first['message'];
-        if (message is Map<String, Object?>) {
-          final content = message['content'];
-          if (content is String && content.trim().isNotEmpty) {
-            return content;
-          }
-        }
-      }
-    }
-    throw const AbyssLApiException(
-      'Chat completion response did not contain message content.',
-    );
   }
 
   Future<String> _resolveModel(ProviderRequestConfig config) async {
-    final model = config.modelId;
+    final model = config.modelId.trim();
     if (model.isEmpty) {
-      if (config.provider == TranslationProvider.localLLM) {
+      if (config.provider.isLocal) {
         final resolved = await _resolveLocalModelName(
-          baseUri: config.localBaseUri,
-          apiKey: config.localApiKey,
+          baseUri: config.baseUri,
+          apiKey: config.apiKey,
+          authMode: config.authMode,
           timeout: config.timeout,
         );
         if (resolved != null) return resolved;
@@ -516,13 +562,14 @@ class AbyssLApiClient {
   Future<String?> _resolveLocalModelName({
     required Uri baseUri,
     required String apiKey,
+    required ApiAuthMode authMode,
     Duration? timeout,
   }) async {
     try {
       final decoded = await _fetchJsonObject(
-        baseUri: baseUri,
-        segments: const ['api', 'v1', 'models'],
+        uri: _localMetadataEndpoint(baseUri),
         apiKey: apiKey,
+        authMode: authMode,
         timeout: timeout,
       );
       final modelInfo = _localModelInfoFor(decoded, null);
@@ -536,25 +583,25 @@ class AbyssLApiClient {
     final models = await _fetchOpenAICompatibleModelCatalog(
       baseUri: baseUri,
       apiKey: apiKey,
+      authMode: authMode,
       timeout: timeout,
     );
     return models.length == 1 ? models.single.requestName : null;
   }
 
   Future<Map<String, Object?>> _fetchJsonObject({
-    required Uri baseUri,
-    required List<String> segments,
+    required Uri uri,
     required String apiKey,
+    required ApiAuthMode authMode,
     Duration? timeout,
   }) async {
-    final request = await _openUrl(
-      'GET',
-      _endpoint(baseUri, segments),
-      timeout,
+    final request = await _openUrl('GET', uri, timeout);
+    _applyHeaders(
+      request,
+      ProviderWireAdapter.requestHeaders(authMode: authMode, apiKey: apiKey),
     );
-    _applyAuth(request, apiKey);
     final response = await _close(request, timeout);
-    final body = await _readCheckedResponse(response);
+    final body = await _readCheckedResponse(response, timeout: timeout);
     final decoded = jsonDecode(body);
     final object = _asObjectMap(decoded);
     if (object == null) {
@@ -566,12 +613,13 @@ class AbyssLApiClient {
   Future<List<LocalLLMModel>> _fetchOpenAICompatibleModelCatalog({
     required Uri baseUri,
     required String apiKey,
+    required ApiAuthMode authMode,
     Duration? timeout,
   }) async {
     final decoded = await _fetchJsonObject(
-      baseUri: baseUri,
-      segments: const ['v1', 'models'],
+      uri: ProviderWireAdapter.appendEndpoint(baseUri, 'models'),
       apiKey: apiKey,
+      authMode: authMode,
       timeout: timeout,
     );
     final data = decoded['data'];
@@ -703,27 +751,14 @@ class AbyssLApiClient {
     return trimmed.isEmpty ? null : trimmed;
   }
 
-  String? _requestReasoningEffort({
-    required TranslationProvider provider,
-    required bool reasoning,
-    required String reasoningEffort,
-  }) {
-    final normalized = reasoningEffort.trim().toLowerCase();
-    if (provider == TranslationProvider.localLLM && normalized == 'off') {
-      return 'off';
-    }
-    if (!reasoning || normalized.isEmpty) return null;
-    if (normalized == 'none' || normalized == 'off') return null;
-    if (provider == TranslationProvider.localLLM && normalized == 'on') {
-      return 'on';
-    }
-    if (normalized == 'on') return 'minimal';
-    const allowed = {'minimal', 'low', 'medium', 'high', 'xhigh'};
-    return allowed.contains(normalized) ? normalized : null;
-  }
+  ProviderWireAdapter _adapterFor(ApiCompatibility compatibility) =>
+      switch (compatibility) {
+        ApiCompatibility.openAI => const OpenAIProviderAdapter(),
+        ApiCompatibility.anthropic => const AnthropicProviderAdapter(),
+      };
 
-  String _responseFormatType(TranslationProvider provider) =>
-      provider == TranslationProvider.localLLM ? 'text' : 'json_object';
+  static ApiAuthMode _legacyAuthModeForKey(String apiKey) =>
+      apiKey.trim().isEmpty ? ApiAuthMode.none : ApiAuthMode.bearer;
 
   static Map<String, Object?>? _asObjectMap(Object? value) {
     if (value is! Map) return null;
@@ -768,15 +803,20 @@ class AbyssLApiClient {
     if (_cancelled) throw const AbyssLRequestCancelledException();
   }
 
-  void _applyAuth(HttpClientRequest request, String key) {
-    final trimmed = key.trim();
-    if (trimmed.isNotEmpty) {
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $trimmed');
+  void _applyHeaders(HttpClientRequest request, Map<String, String> headers) {
+    for (final entry in headers.entries) {
+      request.headers.set(entry.key, entry.value);
     }
   }
 
-  Future<String> _readCheckedResponse(HttpClientResponse response) async {
-    final body = await utf8.decoder.bind(response).join();
+  Future<String> _readCheckedResponse(
+    HttpClientResponse response, {
+    Duration? timeout,
+  }) async {
+    final bodyFuture = utf8.decoder.bind(response).join();
+    final body = timeout == null
+        ? await bodyFuture
+        : await bodyFuture.timeout(timeout);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       String? serverMessage;
       try {
@@ -795,21 +835,26 @@ class AbyssLApiClient {
           : serverMessage;
       throw AbyssLApiException(
         'HTTP ${response.statusCode}${suffix.isEmpty ? '' : ': $suffix'}',
+        statusCode: response.statusCode,
+        responseBody: body,
       );
     }
     return body;
   }
 
-  static Map<String, String> _message(String role, String content) => {
-    'role': role,
-    'content': content,
-  };
+  static ProviderMessage _message(String role, String content) =>
+      ProviderMessage(role, content);
 
-  static Uri _endpoint(Uri baseUri, List<String> segments) {
-    final baseSegments = baseUri.pathSegments.where(
-      (segment) => segment.isNotEmpty,
+  static Uri _localMetadataEndpoint(Uri baseUri) {
+    final baseSegments = baseUri.pathSegments
+        .where((segment) => segment.isNotEmpty)
+        .toList(growable: true);
+    if (baseSegments.isNotEmpty && baseSegments.last == 'v1') {
+      baseSegments.removeLast();
+    }
+    return baseUri.replace(
+      pathSegments: [...baseSegments, 'api', 'v1', 'models'],
     );
-    return baseUri.replace(pathSegments: [...baseSegments, ...segments]);
   }
 
   static TranslationAIResult parseTranslationJson(String raw) {

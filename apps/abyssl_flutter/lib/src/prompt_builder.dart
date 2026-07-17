@@ -8,7 +8,6 @@ class PromptBuilder {
     required TranslationLanguage target,
     required StyleSettings style,
     required bool reasoning,
-    required OpenAIModel model,
   }) {
     final parts = <String>[
       'You are a professional translator. Respond with a single JSON object ONLY, no markdown, no prose outside JSON.',
@@ -19,11 +18,6 @@ class PromptBuilder {
     if (reasoning) {
       parts.add(
         'Think step-by-step internally but do not output your reasoning. Keep JSON-only output.',
-      );
-    }
-    if (!model.supportsReasoningParameter && reasoning) {
-      parts.add(
-        'Even if reasoning is requested, never reveal chain-of-thought; keep JSON-only.',
       );
     }
     parts
@@ -264,5 +258,76 @@ $text
       'Spelling: silently fix obvious spelling issues in revised_source (source language), then translate the corrected meaning.',
     SpellingMode.fixTarget =>
       'Spelling: ensure target translation uses correct spelling/orthography for the target locale.',
+  };
+
+  static Map<String, Object?> translationResponseSchema() => {
+    'type': 'object',
+    'additionalProperties': false,
+    'properties': {
+      'translation': {'type': 'string'},
+      'synonyms': {
+        'type': 'array',
+        'items': {'type': 'string'},
+      },
+      'spelling_notes': {
+        'type': ['string', 'null'],
+      },
+      'revised_source': {
+        'type': ['string', 'null'],
+      },
+    },
+    'required': ['translation', 'synonyms', 'spelling_notes', 'revised_source'],
+  };
+
+  static Map<String, Object?> alternativesResponseSchema(int count) => {
+    'type': 'object',
+    'additionalProperties': false,
+    'properties': {
+      'alternatives': {
+        'type': 'array',
+        'items': {'type': 'string'},
+        'minItems': count,
+        'maxItems': count,
+      },
+    },
+    'required': ['alternatives'],
+  };
+
+  static Map<String, Object?> correctionResponseSchema(int alternativeCount) =>
+      {
+        'type': 'object',
+        'additionalProperties': false,
+        'properties': {
+          'corrected_text': {'type': 'string'},
+          'corrections': {
+            'type': 'array',
+            'items': {
+              'type': 'object',
+              'additionalProperties': false,
+              'properties': {
+                'original': {'type': 'string'},
+                'corrected': {'type': 'string'},
+                'reason': {'type': 'string'},
+                'alternatives': {
+                  'type': 'array',
+                  'items': {'type': 'string'},
+                  'minItems': alternativeCount,
+                  'maxItems': alternativeCount,
+                },
+              },
+              'required': ['original', 'corrected', 'reason', 'alternatives'],
+            },
+          },
+        },
+        'required': ['corrected_text', 'corrections'],
+      };
+
+  static Map<String, Object?> rewriteResponseSchema() => {
+    'type': 'object',
+    'additionalProperties': false,
+    'properties': {
+      'rewritten_text': {'type': 'string'},
+    },
+    'required': ['rewritten_text'],
   };
 }
