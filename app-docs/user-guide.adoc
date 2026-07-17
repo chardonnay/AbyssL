@@ -8,6 +8,7 @@
 == Purpose
 
 AbyssL Translator is a Flutter desktop app for translation, spelling correction, rewriting, and document processing with local or remote LLMs.
+It supports sufficiently compatible OpenAI Chat Completions and Anthropic Messages endpoints, including cloud providers, gateways, and local servers.
 It is designed for fast work with text and files:
 
 * Enter text in `Source` or capture selected text from another app with the global shortcut where the platform adapter supports it
@@ -20,6 +21,10 @@ It is designed for fast work with text and files:
 == Main Window
 
 image::translation-flow.svg[Translation flow, width=900]
+
+The current Translator workspace keeps the instruction, source text, language controls, and translation result in one focused workflow.
+
+image::app-translate.jpg[AbyssL Translator workspace with source text, translation result, language controls, and style popover, width=1100]
 
 The main window uses a navigation rail with these modes:
 
@@ -155,6 +160,8 @@ The current Flutter UI does not automatically replace selected translation text 
 
 `Correction` mode is intended for longer text that should be corrected or stylistically rewritten.
 
+image::app-correction.jpg[AbyssL Correction workspace with marked changes and issue cards, width=1100]
+
 === Correct Text
 
 . Select `Correction` in the navigation rail.
@@ -194,6 +201,8 @@ The copy button in `Correction` mode writes the current corrected or rewritten t
 `Documents` processes files or folders.
 Depending on the selected options, it corrects, translates, or does both.
 When both actions are enabled, correction runs first and translation runs afterward.
+
+image::app-documents.jpg[AbyssL Documents workspace with queued text file and successful PDF result, width=1100]
 
 === Add Files
 
@@ -274,49 +283,84 @@ During document processing, the app shows:
 === Open Settings
 
 Open Settings with the gear button.
-The current Flutter UI shows one scrollable settings dialog.
+The current Flutter UI shows one scrollable settings dialog with three sections:
 
-=== Provider and OpenAI
+* `General` for appearance, languages, text behavior, shortcut, and editor preferences
+* `AI Providers` for all provider connections
+* `About` for the app version, project website, and GitHub release checks
 
-`Provider` selects the active provider:
+=== General
+
+`General` controls the desktop workflow without changing provider credentials:
+
+* Theme mode: `System`, `Light`, or `Dark`
+* Automatic translation while typing
+* Source and target language defaults
+* Register, complexity, and spelling defaults
+* Alternative counts and editor font size
+* Global capture shortcut modifier and key
+
+Changes are committed with `Save`. `Cancel`, Escape, or closing the dialog restores the values that were active before the dialog was opened.
+
+=== AI Providers
+
+`AI Providers` offers three tabs. Select the desired connection type before entering its settings:
 
 [cols="1,3", options="header"]
 |===
 | Provider | Description
 
-| OpenAI
-| Uses OpenAI-compatible `/v1` endpoints with an API key.
+| OpenAI-compatible
+| Uses Chat Completions below the configured base URL. Bearer authentication is the default.
 
-| Local LLM
-| Uses a local OpenAI-compatible server. The app can also read LM Studio metadata from `/api/v1/models`.
+| Anthropic-compatible
+| Uses Messages below the configured base URL. `x-api-key` and `anthropic-version: 2023-06-01` are the defaults.
+
+| Local OpenAI-compatible
+| Uses a local Chat Completions server. The app can also read LM Studio metadata from `/api/v1/models`.
 |===
 
-OpenAI fields:
+Each connection provides:
 
-* API key
-* Host
-* Port
-* Protocol
-* OpenAI model
+* complete base URL, including `/v1` or a gateway path
+* authentication mode: Bearer token, `x-api-key`, or none
+* API key when required
+* freely editable model ID
+* request timeout
+* model discovery and a minimal connection test when supported
+
+Anthropic-compatible connections additionally provide the Anthropic API version and maximum output-token setting.
+The default base URLs are `https://api.openai.com/v1`, `https://api.anthropic.com/v1`, and `http://localhost:11434/v1`.
+
+image::app-anthropic.jpg[AbyssL AI Providers settings with Anthropic-compatible endpoint, model ID, x-api-key authentication, and an empty API key field, width=1100]
 
 API keys are stored with `flutter_secure_storage`.
 If secure storage is unavailable, the app reports the error and does not silently save API keys as plaintext.
 For production use, prefer the most restricted key that still supports the required requests.
 
-=== Local LLM
+[NOTE]
+====
+"Compatible" means that the service implements the selected API format sufficiently for the requested operation.
+Providers and gateways differ in their support for optional features such as model catalogs, structured output, reasoning fields, and local metadata.
+Use `Test connection` for the exact endpoint and model you intend to use.
+====
 
-Local LLM fields:
+=== Local OpenAI-compatible Server
 
-* Host
-* Port
-* Protocol
-* Model name
-* Optional local API key
+The local connection adds:
 
-=== Test Connection and List Local Models
+* optional local API key or unauthenticated access
+* model detection
+* LM Studio reasoning-metadata detection
+* per-model reasoning settings
 
-Use `Test OpenAI` or `Test Local` to check the configured provider.
-For `Local LLM`, `Detect Local` performs these checks:
+=== Test Connection and Model Discovery
+
+Use `Test connection` to check the configured base URL, authentication, model, and generation endpoint. The test sends a minimal AI request and may be billable when a cloud provider is selected.
+
+`Load models` uses the configured API format's model catalog when available. A missing model-catalog endpoint does not block a manually entered model ID.
+
+For `Local OpenAI-compatible`, `Detect Local` performs these checks:
 
 . Check the configured local server.
 . Load available LLMs from LM Studio metadata when the server provides it.
@@ -326,8 +370,8 @@ Loaded models are marked in the list with a green dot.
 
 [NOTE]
 ====
-The local model list is based on `/api/v1/models`.
-If a local server does not provide this LM Studio metadata path, normal `/v1` compatibility can still work, but the model list and reasoning options can be unavailable.
+The enhanced local model list is based on `/api/v1/models`.
+If a local server does not provide this LM Studio metadata path, normal OpenAI-compatible requests can still work, but loaded-state and reasoning metadata can be unavailable.
 ====
 
 === Reasoning Options
@@ -341,29 +385,25 @@ For local LM Studio metadata, `Refresh` can load the available values automatica
 If no reasoning metadata is present, the app treats the local model as a model without reasoning options.
 
 The current request configuration uses `Reasoning value ON` when the `Reasoning` chip is selected and `Reasoning value OFF` when it is not selected.
-Provider-specific request handling decides whether a `reasoning_effort` field is sent.
+Provider-specific request handling decides whether an OpenAI-compatible `reasoning_effort` or an Anthropic-compatible effort option is supported and sent. Unsupported optional fields are not guessed.
 
 === Local Request Timeout
 
 The local request timeout is configured in seconds.
 The default value is 600 seconds.
-The value `0` disables the app timeout for local LLM requests.
+The value `0` disables the app timeout for local provider requests.
 
-=== Other Settings
+=== About and Updates
 
-The dialog also stores:
+`About` shows the AbyssL logo, the installed version, the developer name Daniel Mengel, and the project website.
+Use `Open website` to visit https://chardonnay.github.io/AbyssL/.
 
-* Theme mode: `System`, `Light`, or `Dark`
-* Automatic translation while typing
-* Number of AI alternatives, currently limited to 1 through 8
-* Number of correction alternatives, currently limited to 3 through 8
-* Font size for Source, Translation, and Alternatives
-* Capture modifier and key
-* Default source language
-* Default target language
-* Register
-* Complexity
-* Spelling mode
+`Check for updates` queries the current GitHub release. When a newer signed macOS release is available, AbyssL offers the native download, verification, installation, and relaunch flow.
+If a release does not contain a compatible signed update asset, the app reports that clearly and does not attempt an unsafe installation.
+
+=== General Settings Reference
+
+All General values are retained between launches. This includes theme mode, automatic translation, alternative counts, editor font size, capture shortcut, language defaults, and style defaults.
 
 == Style Options
 
@@ -430,8 +470,9 @@ The app currently offers these language options:
 
 == Window Behavior
 
-The Flutter app uses the default desktop window behavior provided by Flutter and the host platform.
-This repository does not currently contain code that persists custom main-window geometry.
+On macOS, AbyssL remembers the main-window size and position under the name `AbyssLMainWindow`.
+After you resize or move the window, the next launch restores that frame when it is still reachable on an available display.
+If the saved frame would be off-screen, AbyssL starts with a centered usable default size instead.
 
 The Settings UI opens as a scrollable dialog.
 
@@ -442,8 +483,9 @@ API keys are stored through `flutter_secure_storage`.
 Stored values include:
 
 * Provider
-* OpenAI connection data
-* Local LLM connection data
+* OpenAI-compatible connection data
+* Anthropic-compatible connection data
+* Local OpenAI-compatible connection data
 * Local request timeout
 * Capture shortcut
 * Languages
@@ -451,6 +493,7 @@ Stored values include:
 * Reasoning values
 * Automatic translation
 * Number of AI alternatives
+* macOS main-window position and size
 
 The app does not use its own database.
 
@@ -469,13 +512,16 @@ image::architecture.svg[Architecture overview, width=900]
 | Main window state, navigation between Translator, Correction, and Documents, request cancellation, and status display.
 
 | `SettingsDialog`
-| Provider settings, OpenAI and local server fields, connection tests, local model detection, reasoning settings, font size, and capture shortcut settings.
+| General, AI-provider, and About settings; connection tests; model discovery; local reasoning settings; font size; and capture shortcut settings.
 
 | `AppSettingsStore`
 | Persists non-secret settings with `shared_preferences` and API keys with `flutter_secure_storage`.
 
 | `AbyssLApiClient`
-| OpenAI-compatible client for translation, alternatives, correction, rewriting, local model catalog, and local reasoning metadata.
+| Provider-neutral facade for translation, alternatives, correction, rewriting, model catalogs, and local reasoning metadata.
+
+| Provider adapters
+| Map the shared prompts and results to OpenAI-compatible Chat Completions or Anthropic-compatible Messages.
 
 | `PromptBuilder`
 | Builds provider prompts for translation, alternatives, correction, and rewriting.
@@ -553,9 +599,10 @@ If this does not happen, focus is not set correctly on the source editor.
 Check:
 
 . Is the correct provider selected?
-. Is an API key present when the provider is `OpenAI`?
-. Are host, port, and HTTPS correct?
-. For `Local LLM`: is a model entered, or is exactly one loaded model available?
+. Is the selected provider format correct?
+. Is the complete base URL correct, including `/v1` or the gateway path?
+. Does the selected authentication mode match the provider, and is an API key present when required?
+. Is a model ID entered, or is exactly one compatible local model available?
 . Is the local request timeout high enough? For very slow local models, test with `0`.
 . Run `Test connection` in Settings.
 . Read the error in the lower status area.
@@ -614,4 +661,4 @@ asciidoctor README.adoc
 asciidoctor app-docs/user-guide.adoc
 ----
 
-The diagrams are regular SVG files in `app-docs/images/`.
+The diagrams and current application screenshots are stored in `app-docs/images/`.

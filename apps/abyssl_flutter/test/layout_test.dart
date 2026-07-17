@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:abyssl_flutter/main.dart';
 import 'package:abyssl_flutter/src/app_update.dart';
 import 'package:abyssl_flutter/src/models.dart';
@@ -223,6 +225,11 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('nav-settings')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('settings-dialog')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('settings-section-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('provider-tab-anthropic')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('anthropic-version')), findsOneWidget);
 
     final exception = tester.takeException();
     expect(
@@ -264,7 +271,27 @@ void main() {
     expect(find.text('System'), findsOneWidget);
     expect(find.text('Light'), findsOneWidget);
     expect(find.text('Dark'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('settings-section-2')));
+    await tester.tap(find.byKey(const ValueKey('settings-section-1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('provider-tab-openai')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('provider-tab-anthropic')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('provider-tab-local')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('provider-tab-anthropic')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('provider-base-url-anthropicCompatible')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('anthropic-version')), findsOneWidget);
+    final anthropicModel = find.byKey(
+      const ValueKey('provider-model-anthropicCompatible'),
+    );
+    await tester.enterText(anthropicModel, 'custom-anthropic-model');
+    expect(find.text('custom-anthropic-model'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('provider-tab-local')));
     await tester.pumpAndSettle();
     expect(find.text('Detect Local'), findsOneWidget);
     expect(find.text('Refresh'), findsOneWidget);
@@ -275,6 +302,148 @@ void main() {
       reason: flutterErrors.map((details) => details.toString()).join('\n'),
     );
   });
+
+  testWidgets(
+    'manual model ID survives an unavailable optional model catalog',
+    (tester) async {
+      final flutterErrors = <FlutterErrorDetails>[];
+      final previousOnError = FlutterError.onError;
+      FlutterError.onError = (details) {
+        flutterErrors.add(details);
+        previousOnError?.call(details);
+      };
+      addTearDown(() => FlutterError.onError = previousOnError);
+
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(736, 558);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferencesWithCache.create(
+        cacheOptions: const SharedPreferencesWithCacheOptions(),
+      );
+      final settings = AppSettingsStore(preferences: preferences);
+      final apiClient = _MissingModelCatalogApiClient();
+
+      await tester.pumpWidget(
+        AbyssLApp(settings: settings, apiClient: apiClient),
+      );
+      await tester.tap(find.byKey(const ValueKey('nav-settings')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('settings-section-1')));
+      await tester.pumpAndSettle();
+
+      final modelField = find.byKey(
+        const ValueKey('provider-model-openAICompatible'),
+      );
+      await tester.enterText(modelField, 'manual-gateway-model');
+      final loadModels = find.byKey(
+        const ValueKey('provider-model-catalog-openAICompatible'),
+      );
+      await tester.ensureVisible(loadModels);
+      await tester.pumpAndSettle();
+      await tester.tap(loadModels);
+      await tester.pumpAndSettle();
+
+      expect(apiClient.catalogRequests, 1);
+      expect(settings.openAIModelId, 'manual-gateway-model');
+      expect(find.text('manual-gateway-model'), findsOneWidget);
+      expect(
+        find.text('Model catalog unavailable (HTTP 404).'),
+        findsOneWidget,
+      );
+      final exception = tester.takeException();
+      expect(
+        exception,
+        isNull,
+        reason: flutterErrors.map((details) => details.toString()).join('\n'),
+      );
+    },
+  );
+
+  testWidgets(
+    'settings cancel restores drafts while a connection test finishes safely',
+    (tester) async {
+      final flutterErrors = <FlutterErrorDetails>[];
+      final previousOnError = FlutterError.onError;
+      FlutterError.onError = (details) {
+        flutterErrors.add(details);
+        previousOnError?.call(details);
+      };
+      addTearDown(() => FlutterError.onError = previousOnError);
+
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1195, 789);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferencesWithCache.create(
+        cacheOptions: const SharedPreferencesWithCacheOptions(),
+      );
+      final settings = AppSettingsStore(preferences: preferences);
+      final originalBaseUrl = settings.anthropicBaseUrl;
+      final originalVersion = settings.anthropicVersion;
+      final apiClient = _PendingSettingsApiClient();
+      addTearDown(apiClient.release);
+
+      await tester.pumpWidget(
+        AbyssLApp(settings: settings, apiClient: apiClient),
+      );
+      await tester.tap(find.byKey(const ValueKey('nav-settings')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Dark'));
+      await tester.pumpAndSettle();
+      expect(settings.themeMode, AppThemeMode.dark);
+
+      await tester.tap(find.byKey(const ValueKey('settings-section-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('provider-tab-anthropic')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('provider-base-url-anthropicCompatible')),
+        'https://draft.example/anthropic/v1',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('anthropic-version')),
+        '',
+      );
+      final testConnection = find.byKey(
+        const ValueKey('provider-test-anthropicCompatible'),
+      );
+      await tester.ensureVisible(testConnection);
+      await tester.tap(testConnection);
+      await tester.pump();
+      await apiClient.started.future;
+
+      expect(settings.anthropicBaseUrl, 'https://draft.example/anthropic/v1');
+      expect(settings.anthropicVersion, isEmpty);
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(settings.themeMode, AppThemeMode.system);
+      expect(settings.anthropicBaseUrl, originalBaseUrl);
+      expect(settings.anthropicVersion, originalVersion);
+
+      apiClient.release();
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      final exception = tester.takeException();
+      expect(
+        exception,
+        isNull,
+        reason: flutterErrors.map((details) => details.toString()).join('\n'),
+      );
+    },
+  );
 
   testWidgets('app theme mode follows settings', (tester) async {
     SharedPreferencesAsyncPlatform.instance =
@@ -429,10 +598,8 @@ void main() {
     );
     final settings = AppSettingsStore(preferences: preferences);
     settings.update((settings) {
-      settings.selectedProvider = TranslationProvider.localLLM;
-      settings.localServerHost = '127.0.0.1';
-      settings.localServerPort = 1234;
-      settings.localUseHTTPS = false;
+      settings.selectedProvider = TranslationProvider.localOpenAICompatible;
+      settings.localBaseUrl = 'http://127.0.0.1:1234/v1';
       settings.reasoningOnValue = 'low';
       settings.reasoningOffValue = 'none';
       settings.reasoningEnabled = false;
@@ -686,7 +853,7 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('nav-settings')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('settings-section-3')));
+    await tester.tap(find.byKey(const ValueKey('settings-section-2')));
     await tester.pumpAndSettle();
 
     expect(
@@ -729,6 +896,7 @@ class _FakeStartupApiClient extends AbyssLApiClient {
   Future<List<LocalLLMModel>> fetchLocalModelCatalog({
     required Uri baseUri,
     required String apiKey,
+    ApiAuthMode? authMode,
     Duration? timeout,
   }) async {
     return const [
@@ -746,6 +914,7 @@ class _FakeStartupApiClient extends AbyssLApiClient {
     required Uri baseUri,
     required String apiKey,
     required String model,
+    ApiAuthMode? authMode,
     Duration? timeout,
   }) async {
     return const LocalReasoningOptions(
@@ -753,6 +922,56 @@ class _FakeStartupApiClient extends AbyssLApiClient {
       defaultOption: 'on',
       resolvedModelName: 'qwen3-8b-loaded',
     );
+  }
+
+  @override
+  void close() {}
+}
+
+class _MissingModelCatalogApiClient extends AbyssLApiClient {
+  var catalogRequests = 0;
+
+  @override
+  Future<List<LocalLLMModel>> fetchModelCatalog({
+    required TranslationProvider provider,
+    required Uri baseUri,
+    required String apiKey,
+    ApiAuthMode? authMode,
+    String anthropicVersion = '2023-06-01',
+    Duration? timeout,
+  }) async {
+    catalogRequests += 1;
+    throw const AbyssLApiException(
+      'Model catalog unavailable (HTTP 404).',
+      statusCode: 404,
+    );
+  }
+
+  @override
+  void close() {}
+}
+
+class _PendingSettingsApiClient extends AbyssLApiClient {
+  final started = Completer<void>();
+  final _release = Completer<void>();
+
+  void release() {
+    if (!_release.isCompleted) _release.complete();
+  }
+
+  @override
+  Future<void> testConnection({
+    required TranslationProvider provider,
+    required Uri baseUri,
+    required String apiKey,
+    ApiAuthMode? authMode,
+    String? modelId,
+    String anthropicVersion = defaultAnthropicApiVersion,
+    int maxOutputTokens = 64,
+    Duration? timeout,
+  }) async {
+    if (!started.isCompleted) started.complete();
+    await _release.future;
   }
 
   @override

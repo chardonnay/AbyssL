@@ -334,7 +334,8 @@ class _MainShellState extends State<MainShell> {
   }
 
   Future<void> _detectLocalModelAndReasoningAtStartup() async {
-    if (widget.settings.selectedProvider != TranslationProvider.localLLM) {
+    if (widget.settings.selectedProvider !=
+        TranslationProvider.localOpenAICompatible) {
       return;
     }
     try {
@@ -343,8 +344,11 @@ class _MainShellState extends State<MainShell> {
           ? Duration(seconds: settings.localRequestTimeoutSeconds)
           : null;
       final catalog = await _apiClient.fetchLocalModelCatalog(
-        baseUri: settings.baseUriFor(TranslationProvider.localLLM),
+        baseUri: settings.baseUriFor(TranslationProvider.localOpenAICompatible),
         apiKey: settings.localApiKey,
+        authMode: settings.authModeFor(
+          TranslationProvider.localOpenAICompatible,
+        ),
         timeout: timeout,
       );
       final autoModel = _startupAutoModel(catalog);
@@ -362,8 +366,13 @@ class _MainShellState extends State<MainShell> {
       Object? reasoningError;
       try {
         reasoningOptions = await _apiClient.fetchLocalReasoningOptions(
-          baseUri: settings.baseUriFor(TranslationProvider.localLLM),
+          baseUri: settings.baseUriFor(
+            TranslationProvider.localOpenAICompatible,
+          ),
           apiKey: settings.localApiKey,
+          authMode: settings.authModeFor(
+            TranslationProvider.localOpenAICompatible,
+          ),
           model: modelName,
           timeout: timeout,
         );
@@ -2411,6 +2420,103 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
+class _SettingsDialogSnapshot {
+  _SettingsDialogSnapshot._(this._restore);
+
+  factory _SettingsDialogSnapshot.capture(AppSettingsStore settings) {
+    final openAIApiKey = settings.openAIApiKey;
+    final anthropicApiKey = settings.anthropicApiKey;
+    final localApiKey = settings.localApiKey;
+    final openAIBaseUrl = settings.openAIBaseUrl;
+    final openAIModelId = settings.openAIModelId;
+    final openAIAuthMode = settings.openAIAuthMode;
+    final openAIRequestTimeoutSeconds = settings.openAIRequestTimeoutSeconds;
+    final anthropicBaseUrl = settings.anthropicBaseUrl;
+    final anthropicModelId = settings.anthropicModelId;
+    final anthropicAuthMode = settings.anthropicAuthMode;
+    final anthropicRequestTimeoutSeconds =
+        settings.anthropicRequestTimeoutSeconds;
+    final anthropicVersion = settings.anthropicVersion;
+    final localBaseUrl = settings.localBaseUrl;
+    final localModel = settings.localModel;
+    final localAuthMode = settings.localAuthMode;
+    final localRequestTimeoutSeconds = settings.localRequestTimeoutSeconds;
+    final selectedProvider = settings.selectedProvider;
+    final themeMode = settings.themeMode;
+    final llmProfiles = List<LLMProfile>.unmodifiable(settings.llmProfiles);
+    final selectedLLMProfileID = settings.selectedLLMProfileID;
+    final llmReasoningSettings =
+        Map<String, LLMReasoningSettings>.unmodifiable({
+          for (final entry in settings.llmReasoningSettings.entries)
+            entry.key: LLMReasoningSettings(
+              model: entry.value.model,
+              allowedOptions: List<String>.unmodifiable(
+                entry.value.allowedOptions,
+              ),
+              reasoningOnValue: entry.value.reasoningOnValue,
+              reasoningOffValue: entry.value.reasoningOffValue,
+              reasoningEnabled: entry.value.reasoningEnabled,
+            ),
+        });
+    final autoTranslateEnabled = settings.autoTranslateEnabled;
+    final reasoningOnValue = settings.reasoningOnValue;
+    final reasoningOffValue = settings.reasoningOffValue;
+    final reasoningEnabled = settings.reasoningEnabled;
+    final alternativeSuggestionCount = settings.alternativeSuggestionCount;
+    final correctionAlternativeCount = settings.correctionAlternativeCount;
+    final editorFontSize = settings.editorFontSize;
+    final captureShortcutModifier = settings.captureShortcutModifier;
+    final captureShortcutKey = settings.captureShortcutKey;
+    final sourceLanguage = settings.sourceLanguage;
+    final targetLanguage = settings.targetLanguage;
+    final styleRegister = settings.styleRegister;
+    final styleComplexity = settings.styleComplexity;
+    final spellingMode = settings.spellingMode;
+
+    return _SettingsDialogSnapshot._((target) {
+      target.openAIApiKey = openAIApiKey;
+      target.anthropicApiKey = anthropicApiKey;
+      target.localApiKey = localApiKey;
+      target.openAIBaseUrl = openAIBaseUrl;
+      target.openAIModelId = openAIModelId;
+      target.openAIAuthMode = openAIAuthMode;
+      target.openAIRequestTimeoutSeconds = openAIRequestTimeoutSeconds;
+      target.anthropicBaseUrl = anthropicBaseUrl;
+      target.anthropicModelId = anthropicModelId;
+      target.anthropicAuthMode = anthropicAuthMode;
+      target.anthropicRequestTimeoutSeconds = anthropicRequestTimeoutSeconds;
+      target.anthropicVersion = anthropicVersion;
+      target.localBaseUrl = localBaseUrl;
+      target.localModel = localModel;
+      target.localAuthMode = localAuthMode;
+      target.localRequestTimeoutSeconds = localRequestTimeoutSeconds;
+      target.selectedProvider = selectedProvider;
+      target.themeMode = themeMode;
+      target.llmProfiles = llmProfiles;
+      target.selectedLLMProfileID = selectedLLMProfileID;
+      target.llmReasoningSettings = llmReasoningSettings;
+      target.autoTranslateEnabled = autoTranslateEnabled;
+      target.reasoningOnValue = reasoningOnValue;
+      target.reasoningOffValue = reasoningOffValue;
+      target.reasoningEnabled = reasoningEnabled;
+      target.alternativeSuggestionCount = alternativeSuggestionCount;
+      target.correctionAlternativeCount = correctionAlternativeCount;
+      target.editorFontSize = editorFontSize;
+      target.captureShortcutModifier = captureShortcutModifier;
+      target.captureShortcutKey = captureShortcutKey;
+      target.sourceLanguage = sourceLanguage;
+      target.targetLanguage = targetLanguage;
+      target.styleRegister = styleRegister;
+      target.styleComplexity = styleComplexity;
+      target.spellingMode = spellingMode;
+    });
+  }
+
+  final void Function(AppSettingsStore settings) _restore;
+
+  void restore(AppSettingsStore settings) => _restore(settings);
+}
+
 class SettingsDialog extends StatefulWidget {
   const SettingsDialog({
     super.key,
@@ -2431,18 +2537,18 @@ class SettingsDialog extends StatefulWidget {
 
 class _SettingsDialogState extends State<SettingsDialog> {
   late final AppUpdateService _updateService;
-  late final TextEditingController _apiKey;
-  late final TextEditingController _serverHost;
-  late final TextEditingController _serverPort;
-  late final TextEditingController _localApiKey;
-  late final TextEditingController _localHost;
-  late final TextEditingController _localPort;
-  late final TextEditingController _localModel;
-  late final TextEditingController _timeout;
+  late final Map<TranslationProvider, TextEditingController> _baseUrls;
+  late final Map<TranslationProvider, TextEditingController> _modelIds;
+  late final Map<TranslationProvider, TextEditingController> _apiKeys;
+  late final Map<TranslationProvider, TextEditingController> _timeouts;
+  late final TextEditingController _anthropicVersion;
   late final TextEditingController _reasoningOn;
   late final TextEditingController _reasoningOff;
   late final TextEditingController _captureKey;
+  late _SettingsDialogSnapshot _settingsBaseline;
+  var _settingsBaselineRestored = false;
   var _localModels = <LocalLLMModel>[];
+  final _providerModels = <TranslationProvider, List<LocalLLMModel>>{};
   var _reasoningOptions = <String>[
     'none',
     'off',
@@ -2454,6 +2560,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
   var _message = '';
   var _testing = false;
   var _settingsSection = 0;
+  late TranslationProvider _providerTab;
   AppBuildInfo? _appBuildInfo;
   UpdateCheckResult? _updateCheckResult;
   var _aboutStatus =
@@ -2467,16 +2574,27 @@ class _SettingsDialogState extends State<SettingsDialog> {
     super.initState();
     _updateService = widget.updateService ?? GitHubAppUpdateService();
     final settings = widget.settings;
-    _apiKey = TextEditingController(text: settings.apiKey);
-    _serverHost = TextEditingController(text: settings.serverHost);
-    _serverPort = TextEditingController(text: '${settings.serverPort}');
-    _localApiKey = TextEditingController(text: settings.localApiKey);
-    _localHost = TextEditingController(text: settings.localServerHost);
-    _localPort = TextEditingController(text: '${settings.localServerPort}');
-    _localModel = TextEditingController(text: settings.localModel);
-    _timeout = TextEditingController(
-      text: '${settings.localRequestTimeoutSeconds}',
-    );
+    _settingsBaseline = _SettingsDialogSnapshot.capture(settings);
+    _providerTab = settings.selectedProvider;
+    _baseUrls = {
+      for (final provider in TranslationProvider.values)
+        provider: TextEditingController(text: settings.baseUrlFor(provider)),
+    };
+    _modelIds = {
+      for (final provider in TranslationProvider.values)
+        provider: TextEditingController(text: settings.modelIdFor(provider)),
+    };
+    _apiKeys = {
+      for (final provider in TranslationProvider.values)
+        provider: TextEditingController(text: settings.apiKeyFor(provider)),
+    };
+    _timeouts = {
+      for (final provider in TranslationProvider.values)
+        provider: TextEditingController(
+          text: '${settings.timeoutSecondsFor(provider)}',
+        ),
+    };
+    _anthropicVersion = TextEditingController(text: settings.anthropicVersion);
     _reasoningOn = TextEditingController(text: settings.reasoningOnValue);
     _reasoningOff = TextEditingController(text: settings.reasoningOffValue);
     _captureKey = TextEditingController(text: settings.captureShortcutKey);
@@ -2490,37 +2608,67 @@ class _SettingsDialogState extends State<SettingsDialog> {
 
   @override
   void dispose() {
-    _apiKey.dispose();
-    _serverHost.dispose();
-    _serverPort.dispose();
-    _localApiKey.dispose();
-    _localHost.dispose();
-    _localPort.dispose();
-    _localModel.dispose();
-    _timeout.dispose();
+    if (!_settingsBaselineRestored) {
+      _settingsBaselineRestored = true;
+      final settings = widget.settings;
+      final baseline = _settingsBaseline;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        settings.update(baseline.restore);
+      });
+    }
+    for (final controller in _baseUrls.values) {
+      controller.dispose();
+    }
+    for (final controller in _modelIds.values) {
+      controller.dispose();
+    }
+    for (final controller in _apiKeys.values) {
+      controller.dispose();
+    }
+    for (final controller in _timeouts.values) {
+      controller.dispose();
+    }
+    _anthropicVersion.dispose();
     _reasoningOn.dispose();
     _reasoningOff.dispose();
     _captureKey.dispose();
     super.dispose();
   }
 
+  void _cancel() {
+    if (!_settingsBaselineRestored) {
+      _settingsBaselineRestored = true;
+      widget.settings.update(_settingsBaseline.restore);
+    }
+    Navigator.of(context).pop();
+  }
+
+  TextEditingController _baseUrlController(TranslationProvider provider) =>
+      _baseUrls[provider]!;
+
+  TextEditingController _modelController(TranslationProvider provider) =>
+      _modelIds[provider]!;
+
+  TextEditingController _apiKeyController(TranslationProvider provider) =>
+      _apiKeys[provider]!;
+
+  TextEditingController _timeoutController(TranslationProvider provider) =>
+      _timeouts[provider]!;
+
+  TextEditingController get _localModel =>
+      _modelController(TranslationProvider.localOpenAICompatible);
+
+  TextEditingController get _localApiKey =>
+      _apiKeyController(TranslationProvider.localOpenAICompatible);
+
   Future<void> _save() async {
     final settings = widget.settings;
+    await _saveDraftOnly();
     settings.update((value) {
-      value.apiKey = _apiKey.text;
-      value.serverHost = _serverHost.text;
-      value.serverPort = int.tryParse(_serverPort.text) ?? value.serverPort;
-      value.localApiKey = _localApiKey.text;
-      value.localServerHost = _localHost.text;
-      value.localServerPort =
-          int.tryParse(_localPort.text) ?? value.localServerPort;
-      value.localModel = _localModel.text;
-      value.localRequestTimeoutSeconds =
-          int.tryParse(_timeout.text) ?? value.localRequestTimeoutSeconds;
       value.reasoningOnValue = _reasoningOn.text;
       value.reasoningOffValue = _reasoningOff.text;
       value.rememberReasoningSettingsForModel(
-        _localModel.text,
+        _modelController(TranslationProvider.localOpenAICompatible).text,
         allowedOptions: _reasoningOptions,
         reasoningOnValue: _reasoningOn.text,
         reasoningOffValue: _reasoningOff.text,
@@ -2532,10 +2680,11 @@ class _SettingsDialogState extends State<SettingsDialog> {
     });
     try {
       await settings.save();
+      _settingsBaseline = _SettingsDialogSnapshot.capture(settings);
       await widget.onSaved();
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
-      setState(() => _message = '$error');
+      if (mounted) setState(() => _message = '$error');
     }
   }
 
@@ -2546,23 +2695,23 @@ class _SettingsDialogState extends State<SettingsDialog> {
     });
     try {
       await _saveDraftOnly();
+      if (!mounted) return;
       await widget.apiClient.testConnection(
         provider: provider,
         baseUri: widget.settings.baseUriFor(provider),
-        apiKey: provider == TranslationProvider.openAI
-            ? _apiKey.text
-            : _localApiKey.text,
-        timeout:
-            provider == TranslationProvider.localLLM &&
-                widget.settings.localRequestTimeoutSeconds > 0
-            ? Duration(seconds: widget.settings.localRequestTimeoutSeconds)
-            : null,
+        apiKey: _apiKeyController(provider).text,
+        authMode: widget.settings.authModeFor(provider),
+        modelId: _modelController(provider).text,
+        anthropicVersion: widget.settings.anthropicVersion,
+        timeout: widget.settings.timeoutFor(provider),
       );
-      setState(() => _message = '${provider.label} connection OK.');
+      if (mounted) {
+        setState(() => _message = '${provider.label} connection OK.');
+      }
     } catch (error) {
-      setState(() => _message = '$error');
+      if (mounted) setState(() => _message = '$error');
     } finally {
-      setState(() => _testing = false);
+      if (mounted) setState(() => _testing = false);
     }
   }
 
@@ -2573,20 +2722,26 @@ class _SettingsDialogState extends State<SettingsDialog> {
     });
     try {
       await _saveDraftOnly();
+      if (!mounted) return;
       final settings = widget.settings;
       final timeout = settings.localRequestTimeoutSeconds > 0
           ? Duration(seconds: settings.localRequestTimeoutSeconds)
           : null;
       final catalog = await widget.apiClient.fetchLocalModelCatalog(
-        baseUri: settings.baseUriFor(TranslationProvider.localLLM),
+        baseUri: settings.baseUriFor(TranslationProvider.localOpenAICompatible),
         apiKey: _localApiKey.text,
+        authMode: settings.authModeFor(
+          TranslationProvider.localOpenAICompatible,
+        ),
         timeout: timeout,
       );
+      if (!mounted) return;
 
       final autoModel = _singleAutoLocalModel(catalog);
       if (autoModel != null) {
         _localModel.text = autoModel.requestName;
         await _saveDraftOnly();
+        if (!mounted) return;
       }
 
       LocalReasoningOptions? reasoningOptions;
@@ -2595,17 +2750,25 @@ class _SettingsDialogState extends State<SettingsDialog> {
       if (modelForReasoning.isNotEmpty || autoModel != null) {
         try {
           reasoningOptions = await widget.apiClient.fetchLocalReasoningOptions(
-            baseUri: settings.baseUriFor(TranslationProvider.localLLM),
+            baseUri: settings.baseUriFor(
+              TranslationProvider.localOpenAICompatible,
+            ),
             apiKey: _localApiKey.text,
+            authMode: settings.authModeFor(
+              TranslationProvider.localOpenAICompatible,
+            ),
             model: _localModel.text,
             timeout: timeout,
           );
+          if (!mounted) return;
           _applyReasoningOptions(reasoningOptions);
           if (reasoningOptions.resolvedModelName case final resolved?) {
             _localModel.text = resolved;
             await _saveDraftOnly();
+            if (!mounted) return;
           }
         } catch (error) {
+          if (!mounted) return;
           reasoningError = error;
         }
       }
@@ -2620,7 +2783,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
         );
       });
     } catch (error) {
-      setState(() => _message = '$error');
+      if (mounted) setState(() => _message = '$error');
     } finally {
       if (mounted) setState(() => _testing = false);
     }
@@ -2633,26 +2796,32 @@ class _SettingsDialogState extends State<SettingsDialog> {
     });
     try {
       await _saveDraftOnly();
+      if (!mounted) return;
       final settings = widget.settings;
       final timeout = settings.localRequestTimeoutSeconds > 0
           ? Duration(seconds: settings.localRequestTimeoutSeconds)
           : null;
       final fetched = await widget.apiClient.fetchLocalReasoningOptions(
-        baseUri: settings.baseUriFor(TranslationProvider.localLLM),
+        baseUri: settings.baseUriFor(TranslationProvider.localOpenAICompatible),
         apiKey: _localApiKey.text,
+        authMode: settings.authModeFor(
+          TranslationProvider.localOpenAICompatible,
+        ),
         model: _localModel.text,
         timeout: timeout,
       );
+      if (!mounted) return;
       _applyReasoningOptions(fetched);
       if (fetched.resolvedModelName case final resolved?) {
         _localModel.text = resolved;
         await _saveDraftOnly();
+        if (!mounted) return;
       }
       setState(() {
         _message = 'Reasoning options: ${fetched.allowedOptions.join(', ')}.';
       });
     } catch (error) {
-      setState(() => _message = '$error');
+      if (mounted) setState(() => _message = '$error');
     } finally {
       if (mounted) setState(() => _testing = false);
     }
@@ -2756,14 +2925,49 @@ class _SettingsDialogState extends State<SettingsDialog> {
 
   Future<void> _saveDraftOnly() async {
     widget.settings.update((value) {
-      value.serverHost = _serverHost.text;
-      value.serverPort = int.tryParse(_serverPort.text) ?? value.serverPort;
-      value.localServerHost = _localHost.text;
-      value.localServerPort =
-          int.tryParse(_localPort.text) ?? value.localServerPort;
-      value.localModel = _localModel.text;
+      value.openAIBaseUrl = _baseUrlController(
+        TranslationProvider.openAICompatible,
+      ).text;
+      value.openAIModelId = _modelController(
+        TranslationProvider.openAICompatible,
+      ).text;
+      value.openAIApiKey = _apiKeyController(
+        TranslationProvider.openAICompatible,
+      ).text;
+      value.openAIRequestTimeoutSeconds =
+          int.tryParse(
+            _timeoutController(TranslationProvider.openAICompatible).text,
+          ) ??
+          value.openAIRequestTimeoutSeconds;
+      value.anthropicBaseUrl = _baseUrlController(
+        TranslationProvider.anthropicCompatible,
+      ).text;
+      value.anthropicModelId = _modelController(
+        TranslationProvider.anthropicCompatible,
+      ).text;
+      value.anthropicApiKey = _apiKeyController(
+        TranslationProvider.anthropicCompatible,
+      ).text;
+      value.anthropicRequestTimeoutSeconds =
+          int.tryParse(
+            _timeoutController(TranslationProvider.anthropicCompatible).text,
+          ) ??
+          value.anthropicRequestTimeoutSeconds;
+      value.anthropicVersion = _anthropicVersion.text;
+      value.localBaseUrl = _baseUrlController(
+        TranslationProvider.localOpenAICompatible,
+      ).text;
+      value.localApiKey = _apiKeyController(
+        TranslationProvider.localOpenAICompatible,
+      ).text;
+      value.localModel = _modelController(
+        TranslationProvider.localOpenAICompatible,
+      ).text;
       value.localRequestTimeoutSeconds =
-          int.tryParse(_timeout.text) ?? value.localRequestTimeoutSeconds;
+          int.tryParse(
+            _timeoutController(TranslationProvider.localOpenAICompatible).text,
+          ) ??
+          value.localRequestTimeoutSeconds;
       value.reasoningOnValue = _reasoningOn.text;
       value.reasoningOffValue = _reasoningOff.text;
       value.rememberReasoningSettingsForModel(
@@ -2778,7 +2982,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
 
   void _selectSettingsSection(int index) {
     setState(() => _settingsSection = index);
-    if (index == 3) {
+    if (index == 2) {
       unawaited(_loadAppBuildInfo());
     }
   }
@@ -2938,7 +3142,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                     const SizedBox(width: 12),
                   ],
                   TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
+                    onPressed: _cancel,
                     style: TextButton.styleFrom(
                       foregroundColor: const Color(0xFFDCE2EC),
                     ),
@@ -3031,8 +3235,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
   Widget _settingsNavigation({required bool compact}) {
     const sections = [
       (Icons.tune_outlined, 'General'),
-      (Icons.cloud_outlined, 'OpenAI'),
-      (Icons.memory_outlined, 'Local LLM'),
+      (Icons.hub_outlined, 'AI Providers'),
       (Icons.info_outline_rounded, 'About'),
     ];
     if (compact) {
@@ -3148,8 +3351,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
         key: ValueKey(_settingsSection),
         child: switch (_settingsSection) {
           0 => _generalSettings(settings),
-          1 => _openAISettings(settings),
-          2 => _localLLMSettings(settings),
+          1 => _aiProviderSettings(settings),
           _ => _aboutSettings(),
         },
       ),
@@ -3175,6 +3377,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
             DropdownButtonFormField<TranslationProvider>(
               key: ValueKey(settings.selectedProvider),
               initialValue: settings.selectedProvider,
+              isExpanded: true,
               decoration: const InputDecoration(labelText: 'Provider'),
               items: TranslationProvider.values
                   .map(
@@ -3192,21 +3395,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 }
               },
             ),
-            DropdownButtonFormField<OpenAIModel>(
-              key: ValueKey(settings.selectedModel),
-              initialValue: settings.selectedModel,
-              decoration: const InputDecoration(labelText: 'OpenAI model'),
-              items: OpenAIModel.values
-                  .map(
-                    (model) =>
-                        DropdownMenuItem(value: model, child: Text(model.id)),
-                  )
-                  .toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  settings.update((settings) => settings.selectedModel = value);
-                }
-              },
+            const InputDecorator(
+              decoration: InputDecoration(labelText: 'Configuration'),
+              child: Text('Edit endpoints and models under AI Providers'),
             ),
           ]),
         ),
@@ -3280,180 +3471,295 @@ class _SettingsDialogState extends State<SettingsDialog> {
     );
   }
 
-  Widget _openAISettings(AppSettingsStore settings) {
+  Widget _aiProviderSettings(AppSettingsStore settings) {
+    final provider = _providerTab;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _settingsSectionCard(
-          icon: Icons.cloud_outlined,
-          title: 'OpenAI connection',
-          subtitle: 'Configure the API endpoint and credentials.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _settingsRow([
-                TextField(
-                  controller: _serverHost,
-                  decoration: const InputDecoration(labelText: 'OpenAI host'),
-                ),
-                TextField(
-                  controller: _serverPort,
-                  decoration: const InputDecoration(labelText: 'Port'),
-                  keyboardType: TextInputType.number,
-                ),
-                _protocolDropdown(
-                  value: settings.useHTTPS,
-                  onChanged: (value) =>
-                      settings.update((settings) => settings.useHTTPS = value),
-                ),
-              ]),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _apiKey,
-                decoration: const InputDecoration(labelText: 'OpenAI API key'),
-                obscureText: true,
+        Wrap(
+          key: const ValueKey('provider-tabs'),
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final option in TranslationProvider.values)
+              ChoiceChip(
+                key: ValueKey(switch (option) {
+                  TranslationProvider.openAICompatible => 'provider-tab-openai',
+                  TranslationProvider.anthropicCompatible =>
+                    'provider-tab-anthropic',
+                  TranslationProvider.localOpenAICompatible =>
+                    'provider-tab-local',
+                }),
+                selected: provider == option,
+                showCheckmark: false,
+                label: Text(option.label),
+                onSelected: (_) => setState(() => _providerTab = option),
               ),
-              const SizedBox(height: 14),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: _testing
-                      ? null
-                      : () => _testConnection(TranslationProvider.openAI),
-                  icon: const Icon(Icons.wifi_tethering, size: 18),
-                  label: const Text('Test OpenAI'),
-                ),
-              ),
-            ],
+          ],
+        ),
+        const SizedBox(height: 16),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 160),
+          child: KeyedSubtree(
+            key: ValueKey('provider-content-${provider.name}'),
+            child: _providerConnectionCard(settings, provider),
           ),
         ),
+        if (provider == TranslationProvider.localOpenAICompatible) ...[
+          const SizedBox(height: 16),
+          _localReasoningSettings(settings),
+        ],
       ],
     );
   }
 
-  Widget _localLLMSettings(AppSettingsStore settings) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _settingsSectionCard(
-          icon: Icons.dns_outlined,
-          title: 'Local model connection',
-          subtitle: 'Connect AbyssL to an OpenAI-compatible local server.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _settingsRow([
-                TextField(
-                  controller: _localHost,
-                  decoration: const InputDecoration(labelText: 'Local host'),
-                ),
-                TextField(
-                  controller: _localPort,
-                  decoration: const InputDecoration(labelText: 'Port'),
-                  keyboardType: TextInputType.number,
-                ),
-                _protocolDropdown(
-                  value: settings.localUseHTTPS,
-                  onChanged: (value) => settings.update(
-                    (settings) => settings.localUseHTTPS = value,
-                  ),
-                ),
-              ]),
-              const SizedBox(height: 12),
-              _settingsRow([
-                TextField(
-                  controller: _localModel,
-                  decoration: const InputDecoration(labelText: 'Local model'),
-                ),
-                TextField(
-                  controller: _timeout,
-                  decoration: const InputDecoration(
-                    labelText: 'Timeout seconds',
-                  ),
-                  keyboardType: TextInputType.number,
-                ),
-              ]),
-              if (_localModels.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                _localModelDropdown(),
-              ],
-              const SizedBox(height: 12),
-              TextField(
-                controller: _localApiKey,
-                decoration: const InputDecoration(labelText: 'Local API key'),
-                obscureText: true,
+  Widget _providerConnectionCard(
+    AppSettingsStore settings,
+    TranslationProvider provider,
+  ) {
+    final isLocal = provider == TranslationProvider.localOpenAICompatible;
+    final isAnthropic = provider == TranslationProvider.anthropicCompatible;
+    final catalog = isLocal
+        ? _localModels
+        : (_providerModels[provider] ?? const <LocalLLMModel>[]);
+    return _settingsSectionCard(
+      icon: isLocal
+          ? Icons.dns_outlined
+          : isAnthropic
+          ? Icons.auto_awesome_outlined
+          : Icons.cloud_outlined,
+      title: '${provider.label} connection',
+      subtitle: isLocal
+          ? 'Connect to an OpenAI-compatible model server on your network.'
+          : 'Configure any service that implements this compatible API format.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            key: ValueKey('provider-base-url-${provider.name}'),
+            controller: _baseUrlController(provider),
+            decoration: const InputDecoration(
+              labelText: 'Base URL',
+              helperText: 'Include the API path, for example /v1.',
+            ),
+            keyboardType: TextInputType.url,
+            autocorrect: false,
+          ),
+          const SizedBox(height: 12),
+          _settingsRow([
+            TextField(
+              key: ValueKey('provider-model-${provider.name}'),
+              controller: _modelController(provider),
+              decoration: const InputDecoration(labelText: 'Model ID'),
+              autocorrect: false,
+            ),
+            TextField(
+              key: ValueKey('provider-timeout-${provider.name}'),
+              controller: _timeoutController(provider),
+              decoration: const InputDecoration(
+                labelText: 'Timeout seconds',
+                helperText: '0 uses the client default.',
               ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _testing ? null : _detectLocalModelAndReasoning,
-                    icon: const Icon(Icons.radar, size: 18),
-                    label: const Text('Detect Local'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _testing
-                        ? null
-                        : () => _testConnection(TranslationProvider.localLLM),
-                    icon: const Icon(Icons.wifi_tethering, size: 18),
-                    label: const Text('Test Local'),
-                  ),
-                ],
+              keyboardType: TextInputType.number,
+            ),
+          ]),
+          if (catalog.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _providerModelDropdown(provider, catalog),
+          ],
+          const SizedBox(height: 12),
+          _settingsRow([
+            DropdownButtonFormField<ApiAuthMode>(
+              key: ValueKey(
+                'provider-auth-${provider.name}-${settings.authModeFor(provider).name}',
+              ),
+              initialValue: settings.authModeFor(provider),
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Authentication'),
+              items: ApiAuthMode.values
+                  .map(
+                    (mode) =>
+                        DropdownMenuItem(value: mode, child: Text(mode.label)),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value != null) _setProviderAuthMode(provider, value);
+              },
+            ),
+            TextField(
+              key: ValueKey('provider-api-key-${provider.name}'),
+              controller: _apiKeyController(provider),
+              enabled: settings.authModeFor(provider) != ApiAuthMode.none,
+              decoration: const InputDecoration(
+                labelText: 'API key',
+                helperText: 'Stored in the operating system keychain.',
+              ),
+              obscureText: true,
+              autocorrect: false,
+              enableSuggestions: false,
+            ),
+          ]),
+          if (isAnthropic) ...[
+            const SizedBox(height: 12),
+            TextField(
+              key: const ValueKey('anthropic-version'),
+              controller: _anthropicVersion,
+              decoration: const InputDecoration(
+                labelText: 'Anthropic version header',
+                helperText: 'Default: 2023-06-01',
+              ),
+              autocorrect: false,
+            ),
+          ],
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                key: ValueKey('provider-model-catalog-${provider.name}'),
+                onPressed: _testing
+                    ? null
+                    : isLocal
+                    ? _detectLocalModelAndReasoning
+                    : () => _loadProviderModels(provider),
+                icon: Icon(isLocal ? Icons.radar : Icons.list_alt_outlined),
+                label: Text(isLocal ? 'Detect Local' : 'Load models'),
+              ),
+              OutlinedButton.icon(
+                key: ValueKey('provider-test-${provider.name}'),
+                onPressed: _testing ? null : () => _testConnection(provider),
+                icon: const Icon(Icons.wifi_tethering, size: 18),
+                label: const Text('Test connection'),
               ),
             ],
           ),
-        ),
-        const SizedBox(height: 16),
-        _settingsSectionCard(
-          icon: Icons.psychology_outlined,
-          title: 'Reasoning',
-          subtitle: 'Map model-specific reasoning values.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _settingsRow([
-                _reasoningDropdown(
-                  label: 'Reasoning value ON',
-                  controller: _reasoningOn,
-                ),
-                _reasoningDropdown(
-                  label: 'Reasoning value OFF',
-                  controller: _reasoningOff,
-                ),
-              ]),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _testing ? null : _refreshReasoningOptions,
-                    icon: const Icon(Icons.refresh, size: 18),
-                    label: const Text('Refresh'),
-                  ),
-                  FilterChip(
-                    selected: settings.reasoningEnabled,
-                    label: const Text('Reasoning enabled'),
-                    onSelected: (value) => settings.update((settings) {
-                      settings.reasoningEnabled = value;
-                      settings.rememberReasoningSettingsForModel(
-                        _localModel.text,
-                        allowedOptions: _reasoningOptions,
-                        reasoningOnValue: _reasoningOn.text,
-                        reasoningOffValue: _reasoningOff.text,
-                        reasoningEnabled: value,
-                      );
-                    }),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
+  }
+
+  Widget _localReasoningSettings(AppSettingsStore settings) {
+    return _settingsSectionCard(
+      icon: Icons.psychology_outlined,
+      title: 'Reasoning',
+      subtitle: 'Map model-specific reasoning values.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _settingsRow([
+            _reasoningDropdown(
+              label: 'Reasoning value ON',
+              controller: _reasoningOn,
+            ),
+            _reasoningDropdown(
+              label: 'Reasoning value OFF',
+              controller: _reasoningOff,
+            ),
+          ]),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _testing ? null : _refreshReasoningOptions,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Refresh'),
+              ),
+              FilterChip(
+                selected: settings.reasoningEnabled,
+                label: const Text('Reasoning enabled'),
+                onSelected: (value) => settings.update((settings) {
+                  settings.reasoningEnabled = value;
+                  settings.rememberReasoningSettingsForModel(
+                    _localModel.text,
+                    allowedOptions: _reasoningOptions,
+                    reasoningOnValue: _reasoningOn.text,
+                    reasoningOffValue: _reasoningOff.text,
+                    reasoningEnabled: value,
+                  );
+                }),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _setProviderAuthMode(TranslationProvider provider, ApiAuthMode mode) {
+    setState(() {
+      widget.settings.update((settings) {
+        switch (provider) {
+          case TranslationProvider.openAICompatible:
+            settings.openAIAuthMode = mode;
+          case TranslationProvider.anthropicCompatible:
+            settings.anthropicAuthMode = mode;
+          case TranslationProvider.localOpenAICompatible:
+            settings.localAuthMode = mode;
+        }
+      });
+    });
+  }
+
+  Widget _providerModelDropdown(
+    TranslationProvider provider,
+    List<LocalLLMModel> models,
+  ) {
+    final current = _modelController(provider).text.trim();
+    final names = models.map((model) => model.requestName).toList();
+    return DropdownButtonFormField<String>(
+      key: ValueKey(
+        'provider-model-options-${provider.name}-${names.join('|')}',
+      ),
+      initialValue: names.contains(current) ? current : null,
+      isExpanded: true,
+      decoration: const InputDecoration(labelText: 'Available models'),
+      items: models
+          .map(
+            (model) => DropdownMenuItem(
+              value: model.requestName,
+              child: Text(model.name, overflow: TextOverflow.ellipsis),
+            ),
+          )
+          .toList(),
+      onChanged: (value) {
+        if (value != null) {
+          setState(() => _modelController(provider).text = value);
+        }
+      },
+    );
+  }
+
+  Future<void> _loadProviderModels(TranslationProvider provider) async {
+    setState(() {
+      _testing = true;
+      _message = '';
+    });
+    try {
+      await _saveDraftOnly();
+      if (!mounted) return;
+      final models = await widget.apiClient.fetchModelCatalog(
+        provider: provider,
+        baseUri: widget.settings.baseUriFor(provider),
+        apiKey: widget.settings.apiKeyFor(provider),
+        authMode: widget.settings.authModeFor(provider),
+        anthropicVersion: widget.settings.anthropicVersion,
+        timeout: widget.settings.timeoutFor(provider),
+      );
+      if (!mounted) return;
+      setState(() {
+        _providerModels[provider] = models;
+        _message = models.isEmpty
+            ? 'No models were returned. Enter a model ID manually.'
+            : 'Found ${models.length} models.';
+      });
+    } catch (error) {
+      if (mounted) setState(() => _message = '$error');
+    } finally {
+      if (mounted) setState(() => _testing = false);
+    }
   }
 
   Widget _aboutSettings() {
@@ -3733,25 +4039,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
     );
   }
 
-  Widget _protocolDropdown({
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return DropdownButtonFormField<bool>(
-      key: ValueKey(value),
-      initialValue: value,
-      isExpanded: true,
-      decoration: const InputDecoration(labelText: 'Protocol'),
-      items: const [
-        DropdownMenuItem(value: false, child: Text('HTTP')),
-        DropdownMenuItem(value: true, child: Text('HTTPS')),
-      ],
-      onChanged: (nextValue) {
-        if (nextValue != null) onChanged(nextValue);
-      },
-    );
-  }
-
   Widget _themeModePicker(AppSettingsStore settings) {
     return Align(
       alignment: Alignment.centerLeft,
@@ -3786,63 +4073,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _localModelDropdown() {
-    final current = _localModel.text.trim();
-    final modelNames = _localModels
-        .map((model) => model.requestName)
-        .toList(growable: false);
-    return DropdownButtonFormField<String>(
-      key: ValueKey('${modelNames.join('|')}|$current'),
-      initialValue: modelNames.contains(current) ? current : null,
-      isExpanded: true,
-      decoration: const InputDecoration(labelText: 'Detected local models'),
-      items: _localModels
-          .map(
-            (model) => DropdownMenuItem(
-              value: model.requestName,
-              child: _localModelOption(model),
-            ),
-          )
-          .toList(),
-      selectedItemBuilder: (context) =>
-          _localModels.map(_localModelOption).toList(growable: false),
-      onChanged: (value) {
-        if (value == null) return;
-        _localModel.text = value;
-        widget.settings.update((settings) {
-          settings.localModel = value;
-          settings.applyStoredReasoningSettingsForModel(value);
-        });
-        _reasoningOn.text = widget.settings.reasoningOnValue;
-        _reasoningOff.text = widget.settings.reasoningOffValue;
-        final storedOptions = widget.settings.reasoningOptionsForModel(value);
-        if (storedOptions.isNotEmpty) {
-          setState(() => _reasoningOptions = storedOptions);
-        }
-        unawaited(_refreshReasoningOptions());
-      },
-    );
-  }
-
-  Widget _localModelOption(LocalLLMModel model) {
-    return Row(
-      children: [
-        SizedBox(
-          width: 20,
-          child: model.isLoaded
-              ? Icon(
-                  Icons.check_circle,
-                  size: 16,
-                  color: Theme.of(context).colorScheme.primary,
-                )
-              : null,
-        ),
-        const SizedBox(width: 6),
-        Expanded(child: Text(model.name, overflow: TextOverflow.ellipsis)),
-      ],
     );
   }
 

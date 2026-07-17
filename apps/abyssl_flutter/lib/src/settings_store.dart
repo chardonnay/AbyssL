@@ -21,6 +21,8 @@ class AppSettingsStore extends ChangeNotifier {
   static const maximumEditorFontSize = 28.0;
   static const minimumCorrectionAlternativeCount = 3;
   static const maximumCorrectionAlternativeCount = 8;
+  static const currentSettingsSchemaVersion = 2;
+  static const defaultCloudRequestTimeoutSeconds = 120;
   static const defaultLocalRequestTimeoutSeconds = 600;
 
   static const _apiKeyKey = 'abyssl.apiKey';
@@ -36,6 +38,35 @@ class AppSettingsStore extends ChangeNotifier {
   static const _localModelKey = 'abyssl.local.model';
   static const _localRequestTimeoutSecondsKey =
       'abyssl.local.requestTimeoutSeconds';
+  static const _settingsSchemaVersionKey = 'abyssl.settingsSchemaVersion';
+  static const _selectedProviderV2Key = 'abyssl.v2.selectedProvider';
+  static const _openAIBaseUrlKey =
+      'abyssl.v2.provider.openAICompatible.baseUrl';
+  static const _openAIModelIdKey =
+      'abyssl.v2.provider.openAICompatible.modelId';
+  static const _openAIAuthModeKey =
+      'abyssl.v2.provider.openAICompatible.authMode';
+  static const _openAITimeoutKey =
+      'abyssl.v2.provider.openAICompatible.timeoutSeconds';
+  static const _anthropicBaseUrlKey =
+      'abyssl.v2.provider.anthropicCompatible.baseUrl';
+  static const _anthropicModelIdKey =
+      'abyssl.v2.provider.anthropicCompatible.modelId';
+  static const _anthropicAuthModeKey =
+      'abyssl.v2.provider.anthropicCompatible.authMode';
+  static const _anthropicTimeoutKey =
+      'abyssl.v2.provider.anthropicCompatible.timeoutSeconds';
+  static const _anthropicVersionKey =
+      'abyssl.v2.provider.anthropicCompatible.version';
+  static const _localBaseUrlKey =
+      'abyssl.v2.provider.localOpenAICompatible.baseUrl';
+  static const _localModelIdKey =
+      'abyssl.v2.provider.localOpenAICompatible.modelId';
+  static const _localAuthModeKey =
+      'abyssl.v2.provider.localOpenAICompatible.authMode';
+  static const _localTimeoutKey =
+      'abyssl.v2.provider.localOpenAICompatible.timeoutSeconds';
+  static const _anthropicApiKeyKey = 'abyssl.anthropic.apiKey';
   static const _llmProfilesKey = 'abyssl.llmProfiles';
   static const _selectedLLMProfileIDKey = 'abyssl.selectedLLMProfileID';
   static const _llmReasoningSettingsKey = 'abyssl.llmReasoningSettings';
@@ -60,18 +91,24 @@ class AppSettingsStore extends ChangeNotifier {
   final SharedPreferencesWithCache _preferences;
   final FlutterSecureStorage _secureStorage;
 
-  String apiKey = '';
+  String openAIApiKey = '';
+  String anthropicApiKey = '';
   String localApiKey = '';
-  String serverHost = 'api.openai.com';
-  int serverPort = 443;
-  bool useHTTPS = true;
-  TranslationProvider selectedProvider = TranslationProvider.openAI;
-  AppThemeMode themeMode = AppThemeMode.system;
-  String localServerHost = 'localhost';
-  int localServerPort = 11434;
-  bool localUseHTTPS = false;
+  String openAIBaseUrl = 'https://api.openai.com/v1';
+  String openAIModelId = 'gpt-4o-mini';
+  ApiAuthMode openAIAuthMode = ApiAuthMode.bearer;
+  int openAIRequestTimeoutSeconds = defaultCloudRequestTimeoutSeconds;
+  String anthropicBaseUrl = 'https://api.anthropic.com/v1';
+  String anthropicModelId = 'claude-sonnet-4-5';
+  ApiAuthMode anthropicAuthMode = ApiAuthMode.xApiKey;
+  int anthropicRequestTimeoutSeconds = defaultCloudRequestTimeoutSeconds;
+  String anthropicVersion = defaultAnthropicApiVersion;
+  String localBaseUrl = 'http://localhost:11434/v1';
   String localModel = '';
+  ApiAuthMode localAuthMode = ApiAuthMode.none;
   int localRequestTimeoutSeconds = defaultLocalRequestTimeoutSeconds;
+  TranslationProvider selectedProvider = TranslationProvider.openAICompatible;
+  AppThemeMode themeMode = AppThemeMode.system;
   List<LLMProfile> llmProfiles = const [];
   String selectedLLMProfileID = '';
   Map<String, LLMReasoningSettings> llmReasoningSettings = const {};
@@ -85,7 +122,6 @@ class AppSettingsStore extends ChangeNotifier {
   TranslationCaptureModifier captureShortcutModifier =
       TranslationCaptureModifier.control;
   String captureShortcutKey = TranslationCaptureShortcut.defaultKey;
-  OpenAIModel selectedModel = OpenAIModel.gpt4oMini;
   TranslationLanguage sourceLanguage = TranslationLanguage.automatic;
   TranslationLanguage targetLanguage = TranslationLanguage.englishUS;
   RegisterStyle styleRegister = RegisterStyle.neutral;
@@ -106,41 +142,76 @@ class AppSettingsStore extends ChangeNotifier {
   );
 
   Uri baseUriFor(TranslationProvider provider) {
-    final scheme = provider == TranslationProvider.openAI
-        ? (useHTTPS ? 'https' : 'http')
-        : (localUseHTTPS ? 'https' : 'http');
-    final host =
-        (provider == TranslationProvider.openAI ? serverHost : localServerHost)
-            .trim();
-    if (host.isEmpty) {
-      throw const AbyssLApiException('Server host is empty.');
+    final raw = baseUrlFor(provider).trim();
+    final parsed = Uri.tryParse(raw);
+    if (parsed == null ||
+        !parsed.hasAuthority ||
+        parsed.host.isEmpty ||
+        (parsed.scheme != 'http' && parsed.scheme != 'https')) {
+      throw AbyssLApiException(
+        '${provider.label} base URL must be an absolute HTTP or HTTPS URL.',
+      );
     }
-    final port = provider == TranslationProvider.openAI
-        ? serverPort
-        : localServerPort;
-    final defaultPort = scheme == 'https' ? 443 : 80;
-    return Uri(
-      scheme: scheme,
-      host: host,
-      port: port == defaultPort ? 0 : port,
-    );
+    if (parsed.query.isNotEmpty || parsed.fragment.isNotEmpty) {
+      throw AbyssLApiException(
+        '${provider.label} base URL must not contain a query or fragment.',
+      );
+    }
+    final path = parsed.path.length > 1 && parsed.path.endsWith('/')
+        ? parsed.path.substring(0, parsed.path.length - 1)
+        : parsed.path;
+    return parsed.replace(path: path);
+  }
+
+  String baseUrlFor(TranslationProvider provider) => switch (provider) {
+    TranslationProvider.openAICompatible => openAIBaseUrl,
+    TranslationProvider.anthropicCompatible => anthropicBaseUrl,
+    TranslationProvider.localOpenAICompatible => localBaseUrl,
+  };
+
+  String modelIdFor(TranslationProvider provider) => switch (provider) {
+    TranslationProvider.openAICompatible => openAIModelId,
+    TranslationProvider.anthropicCompatible => anthropicModelId,
+    TranslationProvider.localOpenAICompatible => localModel,
+  };
+
+  String apiKeyFor(TranslationProvider provider) => switch (provider) {
+    TranslationProvider.openAICompatible => openAIApiKey,
+    TranslationProvider.anthropicCompatible => anthropicApiKey,
+    TranslationProvider.localOpenAICompatible => localApiKey,
+  };
+
+  ApiAuthMode authModeFor(TranslationProvider provider) => switch (provider) {
+    TranslationProvider.openAICompatible => openAIAuthMode,
+    TranslationProvider.anthropicCompatible => anthropicAuthMode,
+    TranslationProvider.localOpenAICompatible => localAuthMode,
+  };
+
+  int timeoutSecondsFor(TranslationProvider provider) => switch (provider) {
+    TranslationProvider.openAICompatible => openAIRequestTimeoutSeconds,
+    TranslationProvider.anthropicCompatible => anthropicRequestTimeoutSeconds,
+    TranslationProvider.localOpenAICompatible => localRequestTimeoutSeconds,
+  };
+
+  Duration? timeoutFor(TranslationProvider provider) {
+    final seconds = timeoutSecondsFor(provider);
+    return seconds > 0 ? Duration(seconds: seconds) : null;
   }
 
   ProviderRequestConfig requestConfig() => ProviderRequestConfig(
     provider: selectedProvider,
-    openAIBaseUri: baseUriFor(TranslationProvider.openAI),
-    localBaseUri: baseUriFor(TranslationProvider.localLLM),
-    openAIApiKey: apiKey,
-    localApiKey: localApiKey,
-    selectedModel: selectedModel,
-    localModel: localModel,
+    baseUri: baseUriFor(selectedProvider),
+    modelId: modelIdFor(selectedProvider).trim(),
+    authMode: authModeFor(selectedProvider),
+    apiKey: apiKeyFor(selectedProvider),
     sourceLanguage: sourceLanguage,
     targetLanguage: targetLanguage,
     style: style,
     reasoningEnabled: reasoningEnabled,
     reasoningEffort: reasoningEnabled ? reasoningOnValue : reasoningOffValue,
-    localRequestTimeoutSeconds: localRequestTimeoutSeconds,
+    timeout: timeoutFor(selectedProvider),
     correctionAlternativeCount: correctionAlternativeCount,
+    anthropicVersion: anthropicVersion,
   );
 
   static Future<AppSettingsStore> load({
@@ -160,31 +231,92 @@ class AppSettingsStore extends ChangeNotifier {
   }
 
   Future<void> _load() async {
-    serverHost = _preferences.getString(_serverHostKey) ?? serverHost;
-    serverPort = _preferences.getInt(_serverPortKey) ?? serverPort;
-    useHTTPS = _preferences.getBool(_useHTTPSKey) ?? useHTTPS;
-    selectedProvider =
+    final storedSchemaVersion =
+        _preferences.getInt(_settingsSchemaVersionKey) ?? 1;
+    final legacyServerHost =
+        _preferences.getString(_serverHostKey) ?? 'api.openai.com';
+    final legacyServerPort = _preferences.getInt(_serverPortKey) ?? 443;
+    final legacyUseHTTPS = _preferences.getBool(_useHTTPSKey) ?? true;
+    final legacyLocalHost =
+        _preferences.getString(_localServerHostKey) ?? 'localhost';
+    final legacyLocalPort = _preferences.getInt(_localServerPortKey) ?? 11434;
+    final legacyLocalUseHTTPS =
+        _preferences.getBool(_localUseHTTPSKey) ?? false;
+
+    openAIBaseUrl = _normalizedUrlOrFallback(
+      _preferences.getString(_openAIBaseUrlKey) ?? '',
+      _legacyBaseUrl(
+        host: legacyServerHost,
+        port: legacyServerPort,
+        useHTTPS: legacyUseHTTPS,
+      ),
+    );
+    openAIModelId = _nonEmpty(
+      _preferences.getString(_openAIModelIdKey),
+      _preferences.getString(_selectedModelKey) ?? openAIModelId,
+    );
+    openAIAuthMode =
         _enumByName(
-          TranslationProvider.values,
-          _preferences.getString(_providerKey),
+          ApiAuthMode.values,
+          _preferences.getString(_openAIAuthModeKey),
         ) ??
-        selectedProvider;
+        ApiAuthMode.bearer;
+    openAIRequestTimeoutSeconds =
+        (_preferences.getInt(_openAITimeoutKey) ??
+                defaultCloudRequestTimeoutSeconds)
+            .clamp(0, 1 << 31);
+    anthropicBaseUrl = _normalizedUrlOrFallback(
+      _preferences.getString(_anthropicBaseUrlKey) ?? '',
+      anthropicBaseUrl,
+    );
+    anthropicModelId = _nonEmpty(
+      _preferences.getString(_anthropicModelIdKey),
+      anthropicModelId,
+    );
+    anthropicAuthMode =
+        _enumByName(
+          ApiAuthMode.values,
+          _preferences.getString(_anthropicAuthModeKey),
+        ) ??
+        ApiAuthMode.xApiKey;
+    anthropicRequestTimeoutSeconds =
+        (_preferences.getInt(_anthropicTimeoutKey) ??
+                defaultCloudRequestTimeoutSeconds)
+            .clamp(0, 1 << 31);
+    anthropicVersion = _nonEmpty(
+      _preferences.getString(_anthropicVersionKey),
+      anthropicVersion,
+    );
+    localBaseUrl = _normalizedUrlOrFallback(
+      _preferences.getString(_localBaseUrlKey) ?? '',
+      _legacyBaseUrl(
+        host: legacyLocalHost,
+        port: legacyLocalPort,
+        useHTTPS: legacyLocalUseHTTPS,
+      ),
+    );
+    localModel = _nonEmpty(
+      _preferences.getString(_localModelIdKey),
+      _preferences.getString(_localModelKey)?.trim() ?? localModel,
+    );
+    localAuthMode =
+        _enumByName(
+          ApiAuthMode.values,
+          _preferences.getString(_localAuthModeKey),
+        ) ??
+        ApiAuthMode.none;
+    localRequestTimeoutSeconds =
+        (_preferences.getInt(_localTimeoutKey) ??
+                _preferences.getInt(_localRequestTimeoutSecondsKey) ??
+                defaultLocalRequestTimeoutSeconds)
+            .clamp(0, 1 << 31);
+    selectedProvider = _loadSelectedProvider();
     themeMode =
         _enumByName(
           AppThemeMode.values,
           _preferences.getString(_themeModeKey),
         ) ??
         themeMode;
-    localServerHost =
-        _preferences.getString(_localServerHostKey) ?? localServerHost;
-    localServerPort =
-        _preferences.getInt(_localServerPortKey) ?? localServerPort;
-    localUseHTTPS = _preferences.getBool(_localUseHTTPSKey) ?? localUseHTTPS;
-    localModel = _preferences.getString(_localModelKey)?.trim() ?? localModel;
-    localRequestTimeoutSeconds =
-        (_preferences.getInt(_localRequestTimeoutSecondsKey) ??
-                defaultLocalRequestTimeoutSeconds)
-            .clamp(0, 1 << 31);
     autoTranslateEnabled =
         _preferences.getBool(_autoTranslateKey) ?? autoTranslateEnabled;
     reasoningOnValue = _nonEmpty(
@@ -216,9 +348,6 @@ class AppSettingsStore extends ChangeNotifier {
     captureShortcutKey = TranslationCaptureShortcut.normalizeKey(
       _preferences.getString(_captureShortcutKeyKey) ?? captureShortcutKey,
     );
-    selectedModel = OpenAIModel.fromId(
-      _preferences.getString(_selectedModelKey) ?? selectedModel.id,
-    );
     sourceLanguage = TranslationLanguage.fromId(
       _preferences.getString(_sourceLanguageKey) ?? sourceLanguage.id,
     );
@@ -247,13 +376,18 @@ class AppSettingsStore extends ChangeNotifier {
     applyStoredReasoningSettingsForModel(localModel);
     llmProfiles = _loadProfiles();
     if (llmProfiles.isEmpty) {
+      final localUri = Uri.tryParse(localBaseUrl);
       llmProfiles = [
         LLMProfile(
           id: DateTime.now().microsecondsSinceEpoch.toString(),
           name: 'Default',
-          host: localServerHost,
-          port: localServerPort,
-          useHTTPS: localUseHTTPS,
+          host: localUri?.host.isNotEmpty == true
+              ? localUri!.host
+              : 'localhost',
+          port: localUri?.hasPort == true
+              ? localUri!.port
+              : (localUri?.scheme == 'https' ? 443 : 80),
+          useHTTPS: localUri?.scheme == 'https',
           model: localModel,
         ),
       ];
@@ -265,23 +399,36 @@ class AppSettingsStore extends ChangeNotifier {
       selectedLLMProfileID = llmProfiles.first.id;
     }
     await _loadSecrets();
+    if (storedSchemaVersion < currentSettingsSchemaVersion &&
+        secureStorageAvailable) {
+      if (localApiKey.trim().isNotEmpty) {
+        localAuthMode = ApiAuthMode.bearer;
+      }
+      await _saveProviderPreferences();
+    }
   }
 
   Future<void> _loadSecrets() async {
     try {
-      apiKey = await _secureStorage.read(key: _apiKeyKey) ?? '';
+      openAIApiKey = await _secureStorage.read(key: _apiKeyKey) ?? '';
+      anthropicApiKey =
+          await _secureStorage.read(key: _anthropicApiKeyKey) ?? '';
       localApiKey = await _secureStorage.read(key: _localApiKeyKey) ?? '';
       secureStorageAvailable = true;
       secureStorageWarning = null;
     } catch (error) {
       secureStorageAvailable = false;
       secureStorageWarning = 'Secure storage is unavailable: $error';
-      apiKey = '';
+      openAIApiKey = '';
+      anthropicApiKey = '';
       localApiKey = '';
     }
   }
 
   Future<void> save() async {
+    for (final provider in TranslationProvider.values) {
+      baseUriFor(provider);
+    }
     rememberReasoningSettingsForModel(
       localModel,
       allowedOptions: reasoningOptionsForModel(localModel),
@@ -289,28 +436,8 @@ class AppSettingsStore extends ChangeNotifier {
       reasoningOffValue: reasoningOffValue,
       reasoningEnabled: reasoningEnabled,
     );
-    await _preferences.setString(
-      _serverHostKey,
-      serverHost.trim().isEmpty ? 'api.openai.com' : serverHost.trim(),
-    );
-    await _preferences.setInt(_serverPortKey, serverPort.clamp(1, 65535));
-    await _preferences.setBool(_useHTTPSKey, useHTTPS);
-    await _preferences.setString(_providerKey, selectedProvider.name);
+    await _saveProviderPreferences();
     await _preferences.setString(_themeModeKey, themeMode.name);
-    await _preferences.setString(
-      _localServerHostKey,
-      localServerHost.trim().isEmpty ? 'localhost' : localServerHost.trim(),
-    );
-    await _preferences.setInt(
-      _localServerPortKey,
-      localServerPort.clamp(1, 65535),
-    );
-    await _preferences.setBool(_localUseHTTPSKey, localUseHTTPS);
-    await _preferences.setString(_localModelKey, localModel.trim());
-    await _preferences.setInt(
-      _localRequestTimeoutSecondsKey,
-      localRequestTimeoutSeconds.clamp(0, 1 << 31),
-    );
     await _preferences.setBool(_autoTranslateKey, autoTranslateEnabled);
     await _preferences.setString(
       _reasoningOnValueKey,
@@ -344,7 +471,6 @@ class AppSettingsStore extends ChangeNotifier {
       _captureShortcutKeyKey,
       TranslationCaptureShortcut.normalizeKey(captureShortcutKey),
     );
-    await _preferences.setString(_selectedModelKey, selectedModel.id);
     await _preferences.setString(_sourceLanguageKey, sourceLanguage.id);
     await _preferences.setString(_targetLanguageKey, targetLanguage.id);
     await _preferences.setString(_styleRegisterKey, styleRegister.name);
@@ -368,14 +494,17 @@ class AppSettingsStore extends ChangeNotifier {
     );
 
     try {
-      await _persistSecret(_apiKeyKey, apiKey);
+      await _persistSecret(_apiKeyKey, openAIApiKey);
+      await _persistSecret(_anthropicApiKeyKey, anthropicApiKey);
       await _persistSecret(_localApiKeyKey, localApiKey);
       secureStorageAvailable = true;
       secureStorageWarning = null;
     } catch (error) {
       secureStorageAvailable = false;
       secureStorageWarning = 'Secure storage is unavailable: $error';
-      if (apiKey.trim().isNotEmpty || localApiKey.trim().isNotEmpty) {
+      if (openAIApiKey.trim().isNotEmpty ||
+          anthropicApiKey.trim().isNotEmpty ||
+          localApiKey.trim().isNotEmpty) {
         throw AbyssLApiException(
           'API keys were not saved because secure storage is unavailable: $error',
         );
@@ -387,6 +516,55 @@ class AppSettingsStore extends ChangeNotifier {
 
   Future<void> saveAutoTranslateEnabled() async {
     await _preferences.setBool(_autoTranslateKey, autoTranslateEnabled);
+  }
+
+  Future<void> _saveProviderPreferences() async {
+    anthropicVersion = _nonEmpty(anthropicVersion, defaultAnthropicApiVersion);
+    await _preferences.setInt(
+      _settingsSchemaVersionKey,
+      currentSettingsSchemaVersion,
+    );
+    await _preferences.setString(_selectedProviderV2Key, selectedProvider.name);
+    await _preferences.setString(
+      _openAIBaseUrlKey,
+      _normalizedUrlOrFallback(openAIBaseUrl, 'https://api.openai.com/v1'),
+    );
+    await _preferences.setString(
+      _openAIModelIdKey,
+      _nonEmpty(openAIModelId, 'gpt-4o-mini'),
+    );
+    await _preferences.setString(_openAIAuthModeKey, openAIAuthMode.name);
+    await _preferences.setInt(
+      _openAITimeoutKey,
+      openAIRequestTimeoutSeconds.clamp(0, 1 << 31),
+    );
+    await _preferences.setString(
+      _anthropicBaseUrlKey,
+      _normalizedUrlOrFallback(
+        anthropicBaseUrl,
+        'https://api.anthropic.com/v1',
+      ),
+    );
+    await _preferences.setString(
+      _anthropicModelIdKey,
+      _nonEmpty(anthropicModelId, 'claude-sonnet-4-5'),
+    );
+    await _preferences.setString(_anthropicAuthModeKey, anthropicAuthMode.name);
+    await _preferences.setInt(
+      _anthropicTimeoutKey,
+      anthropicRequestTimeoutSeconds.clamp(0, 1 << 31),
+    );
+    await _preferences.setString(_anthropicVersionKey, anthropicVersion);
+    await _preferences.setString(
+      _localBaseUrlKey,
+      _normalizedUrlOrFallback(localBaseUrl, 'http://localhost:11434/v1'),
+    );
+    await _preferences.setString(_localModelIdKey, localModel.trim());
+    await _preferences.setString(_localAuthModeKey, localAuthMode.name);
+    await _preferences.setInt(
+      _localTimeoutKey,
+      localRequestTimeoutSeconds.clamp(0, 1 << 31),
+    );
   }
 
   Future<void> _persistSecret(String key, String value) async {
@@ -529,6 +707,62 @@ class AppSettingsStore extends ChangeNotifier {
       }
     }
     return entries;
+  }
+
+  TranslationProvider _loadSelectedProvider() {
+    final v2Name = _preferences.getString(_selectedProviderV2Key);
+    final v2Provider = _enumByName(TranslationProvider.values, v2Name);
+    if (v2Provider != null) return v2Provider;
+    return switch (_preferences.getString(_providerKey)) {
+      'openAI' => TranslationProvider.openAICompatible,
+      'localLLM' => TranslationProvider.localOpenAICompatible,
+      final name =>
+        _enumByName(TranslationProvider.values, name) ??
+            TranslationProvider.openAICompatible,
+    };
+  }
+
+  static String _legacyBaseUrl({
+    required String host,
+    required int port,
+    required bool useHTTPS,
+  }) {
+    final scheme = useHTTPS ? 'https' : 'http';
+    final normalizedHost = host.trim().isEmpty ? 'localhost' : host.trim();
+    final defaultPort = useHTTPS ? 443 : 80;
+    return Uri(
+      scheme: scheme,
+      host: normalizedHost,
+      port: port == defaultPort ? null : port.clamp(1, 65535),
+      path: '/v1',
+    ).toString();
+  }
+
+  static String _normalizedUrlOrFallback(String value, String fallback) {
+    final trimmed = value.trim();
+    final candidate = trimmed.isEmpty ? fallback : trimmed;
+    final parsed = Uri.tryParse(candidate);
+    final withoutInvalidDefaultPort =
+        parsed != null &&
+            parsed.hasAuthority &&
+            parsed.hasPort &&
+            parsed.port == 0
+        ? Uri(
+            scheme: parsed.scheme,
+            userInfo: parsed.userInfo,
+            host: parsed.host,
+            path: parsed.path,
+            query: parsed.hasQuery ? parsed.query : null,
+            fragment: parsed.hasFragment ? parsed.fragment : null,
+          ).toString()
+        : candidate;
+    return withoutInvalidDefaultPort.length > 1 &&
+            withoutInvalidDefaultPort.endsWith('/')
+        ? withoutInvalidDefaultPort.substring(
+            0,
+            withoutInvalidDefaultPort.length - 1,
+          )
+        : withoutInvalidDefaultPort;
   }
 
   static T? _enumByName<T extends Enum>(List<T> values, String? name) {

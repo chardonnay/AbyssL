@@ -9,7 +9,6 @@ void main() {
       target: TranslationLanguage.german,
       style: const StyleSettings(),
       reasoning: true,
-      model: OpenAIModel.gpt4oMini,
     );
 
     expect(prompt, contains('Respond with a single JSON object ONLY'));
@@ -46,5 +45,45 @@ void main() {
     expect(prompt, contains('"rewritten_text"'));
     expect(prompt, contains('summarize the input extremely briefly'));
     expect(prompt, contains('do not add facts'));
+  });
+
+  test('translation schema is strict and nullable where documented', () {
+    final schema = PromptBuilder.translationResponseSchema();
+    final properties = schema['properties'] as Map<String, Object?>;
+
+    expect(schema['additionalProperties'], isFalse);
+    expect(schema['required'], [
+      'translation',
+      'synonyms',
+      'spelling_notes',
+      'revised_source',
+    ]);
+    expect((properties['spelling_notes'] as Map<String, Object?>)['type'], [
+      'string',
+      'null',
+    ]);
+  });
+
+  test('dynamic schemas lock requested item counts', () {
+    final alternatives = PromptBuilder.alternativesResponseSchema(4);
+    final alternativeProperties =
+        alternatives['properties'] as Map<String, Object?>;
+    final alternativeArray =
+        alternativeProperties['alternatives'] as Map<String, Object?>;
+    final correction = PromptBuilder.correctionResponseSchema(2);
+    final correctionProperties =
+        correction['properties'] as Map<String, Object?>;
+    final corrections =
+        correctionProperties['corrections'] as Map<String, Object?>;
+    final correctionItem = corrections['items'] as Map<String, Object?>;
+    final correctionItemProperties =
+        correctionItem['properties'] as Map<String, Object?>;
+    final correctionAlternatives =
+        correctionItemProperties['alternatives'] as Map<String, Object?>;
+
+    expect(alternativeArray['minItems'], 4);
+    expect(alternativeArray['maxItems'], 4);
+    expect(correctionAlternatives['minItems'], 2);
+    expect(correctionAlternatives['maxItems'], 2);
   });
 }
