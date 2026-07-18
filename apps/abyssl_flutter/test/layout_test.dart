@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:abyssl_flutter/main.dart';
+import 'package:abyssl_flutter/src/app_localizations.dart';
 import 'package:abyssl_flutter/src/app_update.dart';
 import 'package:abyssl_flutter/src/models.dart';
 import 'package:abyssl_flutter/src/openai_client.dart';
@@ -83,7 +84,7 @@ void main() {
     );
     expect(source.bottom, lessThan(bridge.top));
     expect(bridge.bottom, lessThan(result.top));
-    expect(source.height / result.height, closeTo(58 / 42, 0.02));
+    expect(source.height / result.height, closeTo(1, 0.02));
     expect(result.bottom, closeTo(1042, 1));
   });
 
@@ -155,9 +156,10 @@ void main() {
     );
 
     expect(expandedSource.width, greaterThan(initialSource.width + 500));
-    expect(expandedSource.height, greaterThan(initialSource.height + 300));
+    expect(expandedSource.height, greaterThan(initialSource.height + 250));
     expect(expandedResult.width, greaterThan(initialResult.width + 500));
     expect(expandedResult.height, greaterThan(initialResult.height + 200));
+    expect(expandedSource.height / expandedResult.height, closeTo(1, 0.02));
     expect(expandedSource.right, closeTo(1780, 1));
     expect(expandedResult.bottom, closeTo(1284, 1));
 
@@ -475,6 +477,130 @@ void main() {
     );
   });
 
+  testWidgets('app language follows the system and supports an override', (
+    tester,
+  ) async {
+    tester.binding.platformDispatcher.localeTestValue = const Locale('de');
+    tester.binding.platformDispatcher.localesTestValue = const [Locale('de')];
+    addTearDown(tester.binding.platformDispatcher.clearLocaleTestValue);
+    addTearDown(tester.binding.platformDispatcher.clearLocalesTestValue);
+
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferencesWithCache.create(
+      cacheOptions: const SharedPreferencesWithCacheOptions(),
+    );
+    final settings = AppSettingsStore(preferences: preferences);
+
+    await tester.pumpWidget(AbyssLApp(settings: settings));
+    await tester.pumpAndSettle();
+    expect(tester.widget<MaterialApp>(find.byType(MaterialApp)).locale, isNull);
+    final appContext = tester.element(find.byType(MainShell));
+    expect(Localizations.localeOf(appContext), const Locale('de'));
+    expect(
+      AbyssLAppLocalizations.of(appContext).text('Translate'),
+      'Übersetzen',
+    );
+
+    settings.update((settings) => settings.appLanguage = AppLanguage.german);
+    await tester.pumpAndSettle();
+    expect(find.text('Übersetzen'), findsWidgets);
+
+    settings.update((settings) => settings.appLanguage = AppLanguage.french);
+    await tester.pumpAndSettle();
+    expect(find.text('Traduire'), findsWidgets);
+    expect(
+      tester.widget<MaterialApp>(find.byType(MaterialApp)).locale,
+      const Locale('fr'),
+    );
+  });
+
+  testWidgets('German localizes all primary workspaces and settings', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1536, 900);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferencesWithCache.create(
+      cacheOptions: const SharedPreferencesWithCacheOptions(),
+    );
+    final settings = AppSettingsStore(preferences: preferences);
+    settings.update((settings) => settings.appLanguage = AppLanguage.german);
+
+    await tester.pumpWidget(AbyssLApp(settings: settings));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Befehl eingeben oder ⌘K drücken'), findsOneWidget);
+    expect(find.text('DIREKTE ANWEISUNG'), findsOneWidget);
+    expect(find.text('Stil: Neutral'), findsOneWidget);
+    expect(find.text('Quelle'), findsWidgets);
+    expect(find.text('Englisch (USA)'), findsWidgets);
+    expect(find.text('Bereit'), findsOneWidget);
+    expect(find.text('ÜBERSETZUNG'), findsOneWidget);
+    expect(find.text('Translate'), findsNothing);
+    expect(find.text('Source'), findsNothing);
+    expect(find.text('Target'), findsNothing);
+    expect(find.text('Settings'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('nav-correction')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('KORREKTURANWEISUNG'), findsOneWidget);
+    expect(
+      find.text(
+        'Beschreibe, wie der Text korrigiert oder umgeschrieben werden soll…',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Den zu verbessernden Text hier eingeben oder einfügen…'),
+      findsOneWidget,
+    );
+    expect(find.text('Umschreibstil'), findsOneWidget);
+    expect(find.text('KORRIGIERTER / UMGESCHRIEBENER TEXT'), findsOneWidget);
+    expect(find.text('Correction'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('nav-documents')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dateien hinzufügen'), findsOneWidget);
+    expect(find.text('Ordner hinzufügen'), findsOneWidget);
+    expect(find.text('Kein Ausgabeordner ausgewählt'), findsOneWidget);
+    expect(
+      find.text('Optionale Anweisung für alle Dokumente…'),
+      findsOneWidget,
+    );
+    expect(find.text('VERARBEITUNGSERGEBNISSE'), findsOneWidget);
+    expect(find.text('Bereit'), findsOneWidget);
+    expect(find.text('Documents'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('nav-settings')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Einstellungen'), findsWidgets);
+    expect(find.text('Allgemein'), findsOneWidget);
+    expect(find.text('KI-Anbieter'), findsOneWidget);
+    expect(find.text('Darstellung'), findsOneWidget);
+    expect(find.text('App-Sprache'), findsOneWidget);
+    expect(find.text('Standardanbieter'), findsOneWidget);
+    expect(find.text('Settings'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('settings-section-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Basis-URL'), findsOneWidget);
+    expect(find.text('Modell-ID'), findsOneWidget);
+    expect(find.text('Timeout in Sekunden'), findsOneWidget);
+    expect(find.text('Authentifizierung'), findsOneWidget);
+    expect(find.text('API-Schlüssel'), findsOneWidget);
+  });
+
   testWidgets('translator swap button exchanges source and target languages', (
     tester,
   ) async {
@@ -537,9 +663,24 @@ void main() {
 
     expect(apiClient.translateCalls, ['hello']);
     expect(find.text('translated hello'), findsOneWidget);
-    expect(find.text('Alternatives'), findsWidgets);
+    expect(find.text('Suggestions for the full translation'), findsOneWidget);
     expect(find.text('hello there'), findsOneWidget);
     expect(find.text('greetings'), findsOneWidget);
+
+    final translationEditor = tester.widget<TextField>(
+      find.byKey(const ValueKey('translation-editor')),
+    );
+    translationEditor.controller!.selection = const TextSelection(
+      baseOffset: 0,
+      extentOffset: 10,
+    );
+    await tester.pump();
+    await tester.tap(find.text('More alternatives'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Alternatives for “translated”'), findsOneWidget);
+    expect(find.text('alternative one'), findsOneWidget);
+    expect(find.text('alternative two'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('auto-translate-switch')));
     await tester.pump();
@@ -1004,6 +1145,15 @@ class _RecordingTranslateApiClient extends AbyssLApiClient {
       revisedSource: null,
     );
   }
+
+  @override
+  Future<List<String>> suggestAlternatives({
+    required String selectedText,
+    required String targetContext,
+    required String userInstruction,
+    required int count,
+    required ProviderRequestConfig config,
+  }) async => const ['alternative one', 'alternative two'];
 
   @override
   void close() {}

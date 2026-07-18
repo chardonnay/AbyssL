@@ -32,6 +32,7 @@ class AppSettingsStore extends ChangeNotifier {
   static const _useHTTPSKey = 'abyssl.useHTTPS';
   static const _providerKey = 'abyssl.provider';
   static const _themeModeKey = 'abyssl.themeMode';
+  static const _appLanguageKey = 'abyssl.appLanguage';
   static const _localServerHostKey = 'abyssl.local.serverHost';
   static const _localServerPortKey = 'abyssl.local.serverPort';
   static const _localUseHTTPSKey = 'abyssl.local.useHTTPS';
@@ -109,6 +110,7 @@ class AppSettingsStore extends ChangeNotifier {
   int localRequestTimeoutSeconds = defaultLocalRequestTimeoutSeconds;
   TranslationProvider selectedProvider = TranslationProvider.openAICompatible;
   AppThemeMode themeMode = AppThemeMode.system;
+  AppLanguage appLanguage = AppLanguage.system;
   List<LLMProfile> llmProfiles = const [];
   String selectedLLMProfileID = '';
   Map<String, LLMReasoningSettings> llmReasoningSettings = const {};
@@ -317,6 +319,12 @@ class AppSettingsStore extends ChangeNotifier {
           _preferences.getString(_themeModeKey),
         ) ??
         themeMode;
+    appLanguage =
+        _enumByName(
+          AppLanguage.values,
+          _preferences.getString(_appLanguageKey),
+        ) ??
+        appLanguage;
     autoTranslateEnabled =
         _preferences.getBool(_autoTranslateKey) ?? autoTranslateEnabled;
     reasoningOnValue = _nonEmpty(
@@ -438,6 +446,7 @@ class AppSettingsStore extends ChangeNotifier {
     );
     await _saveProviderPreferences();
     await _preferences.setString(_themeModeKey, themeMode.name);
+    await _preferences.setString(_appLanguageKey, appLanguage.name);
     await _preferences.setBool(_autoTranslateKey, autoTranslateEnabled);
     await _preferences.setString(
       _reasoningOnValueKey,
