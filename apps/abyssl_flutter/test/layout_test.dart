@@ -513,7 +513,9 @@ void main() {
       cacheOptions: const SharedPreferencesWithCacheOptions(),
     );
     final settings = AppSettingsStore(preferences: preferences);
-    final apiClient = _RecordingTranslateApiClient();
+    final apiClient = _RecordingTranslateApiClient(
+      synonyms: const ['hello there', 'greetings'],
+    );
 
     await tester.pumpWidget(
       AbyssLApp(settings: settings, apiClient: apiClient),
@@ -535,6 +537,9 @@ void main() {
 
     expect(apiClient.translateCalls, ['hello']);
     expect(find.text('translated hello'), findsOneWidget);
+    expect(find.text('Alternatives'), findsWidgets);
+    expect(find.text('hello there'), findsOneWidget);
+    expect(find.text('greetings'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('auto-translate-switch')));
     await tester.pump();
@@ -980,7 +985,10 @@ class _PendingSettingsApiClient extends AbyssLApiClient {
 
 // Test double for translator requests.
 class _RecordingTranslateApiClient extends AbyssLApiClient {
+  _RecordingTranslateApiClient({this.synonyms = const []});
+
   final translateCalls = <String>[];
+  final List<String> synonyms;
 
   @override
   Future<TranslationAIResult> translate({
@@ -991,7 +999,7 @@ class _RecordingTranslateApiClient extends AbyssLApiClient {
     translateCalls.add(text);
     return TranslationAIResult(
       translation: 'translated $text',
-      synonyms: const [],
+      synonyms: synonyms,
       spellingNotes: null,
       revisedSource: null,
     );
