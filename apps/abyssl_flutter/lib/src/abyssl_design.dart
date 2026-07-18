@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app_localizations.dart';
+
 abstract final class AbyssLPalette {
   static const ink = Color(0xFF21252D);
   static const inkRaised = Color(0xFF23272F);
@@ -261,15 +263,16 @@ class AbyssLNavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final localizedLabel = AbyssLAppLocalizations.of(context).text(label);
     final color = selected
         ? AbyssLPalette.blue
         : Theme.of(context).colorScheme.onSurfaceVariant;
     return Tooltip(
-      message: label,
+      message: localizedLabel,
       child: Semantics(
         selected: selected,
         button: true,
-        label: label,
+        label: localizedLabel,
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(10),
@@ -287,7 +290,7 @@ class AbyssLNavItem extends StatelessWidget {
                 Icon(icon, color: color, size: 26),
                 const SizedBox(height: 7),
                 Text(
-                  label,
+                  localizedLabel,
                   maxLines: 1,
                   overflow: TextOverflow.fade,
                   style: TextStyle(
@@ -368,8 +371,9 @@ class AbyssLSectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final localizedLabel = AbyssLAppLocalizations.of(context).text(label);
     return Text(
-      label.toUpperCase(),
+      localizedLabel.toUpperCase(),
       style: Theme.of(context).textTheme.labelMedium?.copyWith(
         color: color ?? Theme.of(context).colorScheme.onSurfaceVariant,
         fontWeight: FontWeight.w700,

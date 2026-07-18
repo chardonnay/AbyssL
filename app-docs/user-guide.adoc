@@ -269,6 +269,24 @@ This is not an overlay of the original PDF.
 Scanned PDFs without extractable text are reported as unsupported because OCR is not included.
 Embedded PDF images are not reliably extracted in the current implementation.
 
+On macOS, AbyssL uses the built-in PDFKit reader and normally needs no
+additional installation. If a macOS build reports that PDF extraction is not
+available, update or rebuild AbyssL and restart it; an older app bundle may not
+include the native reader.
+
+On platforms without native PDF support, AbyssL looks for either
+`pdftotext` (from Poppler) or `mutool` (from MuPDF) on the system `PATH`.
+For example, macOS users who need the fallback can install Poppler with:
+
+[source,shell]
+----
+brew install poppler
+----
+
+Restart AbyssL after installing a command-line tool so it receives the updated
+`PATH`. Neither a text extractor nor an AI model can read text that exists only
+as pixels in a scanned PDF; such files require OCR first.
+
 === Progress
 
 During document processing, the app shows:
@@ -294,6 +312,7 @@ The current Flutter UI shows one scrollable settings dialog with three sections:
 `General` controls the desktop workflow without changing provider credentials:
 
 * Theme mode: `System`, `Light`, or `Dark`
+* Application language: `System default` follows the macOS language; English, German, French, Spanish, Portuguese, Italian, Dutch, and Croatian can be selected explicitly
 * Automatic translation while typing
 * Source and target language defaults
 * Register, complexity, and spelling defaults
@@ -403,7 +422,7 @@ If a release does not contain a compatible signed update asset, the app reports 
 
 === General Settings Reference
 
-All General values are retained between launches. This includes theme mode, automatic translation, alternative counts, editor font size, capture shortcut, language defaults, and style defaults.
+All General values are retained between launches. This includes theme mode, application-language override, automatic translation, alternative counts, editor font size, capture shortcut, language defaults, and style defaults.
 
 == Style Options
 
@@ -638,6 +657,11 @@ Check:
 Check:
 
 . Does the PDF contain extractable text, or is it a scan?
+. On macOS, update or rebuild and restart AbyssL to activate the built-in
+  PDFKit reader. No Poppler installation should be needed for a current build.
+. On another platform, install Poppler (`pdftotext`) or MuPDF (`mutool`) and
+  ensure the executable is on the system `PATH`. On macOS, `brew install poppler`
+  provides `pdftotext` as a fallback.
 . Test export format `Plain text` to isolate text extraction.
 . OCR is not implemented for scanned PDFs in the current version.
 . PDF export is a reflow export and does not use the original layout as a background.

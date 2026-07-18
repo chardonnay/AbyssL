@@ -2,10 +2,13 @@ import 'dart:async';
 
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
+import 'package:flutter/material.dart' as material;
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 
 import 'src/abyssl_design.dart';
+import 'src/app_localizations.dart';
 import 'src/app_update.dart';
 import 'src/document_processing.dart';
 import 'src/models.dart';
@@ -17,6 +20,61 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final settings = await AppSettingsStore.load();
   runApp(AbyssLApp(settings: settings));
+}
+
+/// Translates the static desktop UI copy while preserving Material's familiar
+/// [Text] API throughout this file. Dynamic user content remains untouched.
+class Text extends StatelessWidget {
+  const Text(
+    this.data, {
+    super.key,
+    this.style,
+    this.strutStyle,
+    this.textAlign,
+    this.textDirection,
+    this.locale,
+    this.softWrap,
+    this.overflow,
+    this.textScaler,
+    this.maxLines,
+    this.semanticsLabel,
+    this.textWidthBasis,
+    this.textHeightBehavior,
+    this.selectionColor,
+  });
+
+  final String data;
+  final TextStyle? style;
+  final StrutStyle? strutStyle;
+  final TextAlign? textAlign;
+  final TextDirection? textDirection;
+  final Locale? locale;
+  final bool? softWrap;
+  final TextOverflow? overflow;
+  final TextScaler? textScaler;
+  final int? maxLines;
+  final String? semanticsLabel;
+  final TextWidthBasis? textWidthBasis;
+  final TextHeightBehavior? textHeightBehavior;
+  final Color? selectionColor;
+
+  @override
+  Widget build(BuildContext context) => material.Text(
+    AbyssLAppLocalizations.of(context).text(data),
+    style: style,
+    strutStyle: strutStyle,
+    textAlign: textAlign,
+    textDirection: textDirection,
+    locale: locale,
+    softWrap: softWrap,
+    overflow: overflow,
+    textScaler: textScaler,
+    maxLines: maxLines,
+    semanticsLabel: semanticsLabel,
+    textWidthBasis: textWidthBasis,
+    textHeightBehavior: textHeightBehavior,
+    selectionColor: selectionColor,
+  );
 }
 
 class AbyssLApp extends StatelessWidget {
@@ -38,6 +96,26 @@ class AbyssLApp extends StatelessWidget {
       builder: (context, _) => MaterialApp(
         title: 'AbyssL Translator',
         debugShowCheckedModeBanner: false,
+        locale: settings.appLanguage.languageCode == null
+            ? null
+            : Locale(settings.appLanguage.languageCode!),
+        supportedLocales: AbyssLAppLocalizations.supportedLocales,
+        localeResolutionCallback: (locale, supportedLocales) {
+          if (locale != null) {
+            for (final supported in supportedLocales) {
+              if (supported.languageCode == locale.languageCode) {
+                return supported;
+              }
+            }
+          }
+          return const Locale('en');
+        },
+        localizationsDelegates: const [
+          AbyssLAppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
         themeMode: _themeMode(settings.themeMode),
         theme: _themeData(Brightness.light),
         darkTheme: _themeData(Brightness.dark),
@@ -258,7 +336,6 @@ class _MainShellState extends State<MainShell> {
   final _alternativesInstructionController = TextEditingController();
   final _documentInstructionController = TextEditingController();
   final _synonymsScrollController = ScrollController();
-  final _alternativesScrollController = ScrollController();
   Timer? _autoTranslateTimer;
   StreamSubscription<String>? _captureSubscription;
   late final AbyssLApiClient _apiClient;
@@ -270,6 +347,7 @@ class _MainShellState extends State<MainShell> {
   var _status = '';
   var _synonyms = <String>[];
   var _alternatives = <String>[];
+  String? _alternativesSubject;
   var _correctionIssues = <WritingCorrectionIssue>[];
   var _rewritePreset = WritingStylePreset.standard;
   var _documentOptions = const DocumentOperationOptions();
@@ -282,6 +360,8 @@ class _MainShellState extends State<MainShell> {
   );
   String? _documentOutputDirectory;
   CaptureStatus? _captureStatus;
+
+  String _t(String value) => AbyssLAppLocalizations.of(context).text(value);
 
   @override
   void initState() {
@@ -320,7 +400,6 @@ class _MainShellState extends State<MainShell> {
     _alternativesInstructionController.dispose();
     _documentInstructionController.dispose();
     _synonymsScrollController.dispose();
-    _alternativesScrollController.dispose();
     super.dispose();
   }
 
@@ -356,7 +435,8 @@ class _MainShellState extends State<MainShell> {
       if (modelName.isEmpty) {
         if (mounted && catalog.isNotEmpty) {
           setState(
-            () => _status = 'Local LLM models found. Select one in Settings.',
+            () =>
+                _status = _t('Local LLM models found. Select one in Settings.'),
           );
         }
         return;
@@ -408,7 +488,9 @@ class _MainShellState extends State<MainShell> {
       }
     } catch (error) {
       if (mounted) {
-        setState(() => _status = 'Local LLM auto detection failed: $error');
+        setState(
+          () => _status = '${_t('Local LLM auto detection failed')}: $error',
+        );
       }
     }
   }
@@ -426,12 +508,12 @@ class _MainShellState extends State<MainShell> {
     required Object? reasoningError,
   }) {
     if (reasoningOptions != null) {
-      return 'Detected local model: $model. Reasoning options: ${reasoningOptions.allowedOptions.join(', ')}.';
+      return '${_t('Detected local model')}: $model. ${_t('Reasoning options')}: ${reasoningOptions.allowedOptions.join(', ')}.';
     }
     if (reasoningError != null) {
-      return 'Detected local model: $model. Reasoning metadata unavailable: $reasoningError';
+      return '${_t('Detected local model')}: $model. ${_t('Reasoning metadata unavailable')}: $reasoningError';
     }
-    return 'Detected local model: $model.';
+    return '${_t('Detected local model')}: $model.';
   }
 
   ProviderRequestConfig _requestConfig() => widget.settings.requestConfig();
@@ -447,16 +529,18 @@ class _MainShellState extends State<MainShell> {
     try {
       await action();
     } on AbyssLRequestCancelledException {
-      setState(() => _status = 'Request cancelled.');
+      setState(() => _status = _t('Request cancelled.'));
     } catch (error) {
       setState(
-        () => _status = _cancelRequested ? 'Request cancelled.' : '$error',
+        () => _status = _cancelRequested
+            ? _t('Request cancelled.')
+            : _t('$error'),
       );
     } finally {
       if (mounted) {
         setState(() {
-          if (_cancelRequested && _status == 'Cancelling request...') {
-            _status = 'Request cancelled.';
+          if (_cancelRequested && _status == _t('Cancelling request…')) {
+            _status = _t('Request cancelled.');
           }
           _isBusy = false;
           _cancelRequested = false;
@@ -471,7 +555,7 @@ class _MainShellState extends State<MainShell> {
     _autoTranslateTimer?.cancel();
     setState(() {
       _cancelRequested = true;
-      _status = 'Cancelling request...';
+      _status = _t('Cancelling request…');
     });
     _apiClient.cancelActiveRequests();
   }
@@ -510,7 +594,8 @@ class _MainShellState extends State<MainShell> {
     } catch (error) {
       if (mounted) {
         setState(
-          () => _status = 'Auto translate setting was not saved: $error',
+          () => _status =
+              '${_t('Auto-translate setting could not be saved')}: $error',
         );
       }
     }
@@ -524,6 +609,8 @@ class _MainShellState extends State<MainShell> {
     );
     _translationController.text = result.translation;
     _synonyms = result.synonyms;
+    _alternatives = [];
+    _alternativesSubject = null;
     _status = result.spellingNotes ?? '';
   });
 
@@ -540,6 +627,9 @@ class _MainShellState extends State<MainShell> {
       count: widget.settings.alternativeSuggestionCount,
       config: _requestConfig(),
     );
+    _alternativesSubject = selection.isValid && !selection.isCollapsed
+        ? selectedText
+        : null;
   });
 
   void _clearTranslatorTexts() {
@@ -549,6 +639,7 @@ class _MainShellState extends State<MainShell> {
       _translationController.clear();
       _synonyms = [];
       _alternatives = [];
+      _alternativesSubject = null;
       _status = '';
     });
   }
@@ -680,7 +771,7 @@ class _MainShellState extends State<MainShell> {
 
   String _correctionIssueCountLabel() {
     final count = _correctionIssues.length;
-    return count == 1 ? '1 error' : '$count errors';
+    return '$count ${_t(count == 1 ? 'error' : 'errors')}';
   }
 
   Future<void> _pickDocumentFiles() async {
@@ -804,8 +895,9 @@ class _MainShellState extends State<MainShell> {
       }
     } else {
       setState(
-        () => _status =
-            'Unknown command. Try Translate, Correct, Rewrite, Documents, or Settings.',
+        () => _status = _t(
+          'Unknown command. Try Translate, Correct, Rewrite, Documents, or Settings.',
+        ),
       );
     }
     _commandController.clear();
@@ -841,7 +933,7 @@ class _MainShellState extends State<MainShell> {
         settings.styleRegister == RegisterStyle.neutral &&
         settings.styleComplexity == ComplexityStyle.neutral &&
         settings.spellingMode == SpellingMode.preserve;
-    return isNeutral ? 'Neutral' : 'Custom';
+    return _t(isNeutral ? 'Neutral' : 'Custom');
   }
 
   void _resetStyleSettings() {
@@ -963,7 +1055,7 @@ class _MainShellState extends State<MainShell> {
                     textInputAction: TextInputAction.done,
                     style: const TextStyle(color: Colors.white, fontSize: 16),
                     decoration: InputDecoration(
-                      hintText: 'Type a command or press ⌘K',
+                      hintText: _t('Type a command or press ⌘K'),
                       hintStyle: const TextStyle(color: Color(0xFFB4B8C1)),
                       prefixIcon: const Icon(
                         Icons.search,
@@ -1212,7 +1304,7 @@ class _MainShellState extends State<MainShell> {
               Padding(
                 padding: const EdgeInsets.only(right: 12),
                 child: Tooltip(
-                  message: _captureStatus!.message,
+                  message: _t(_captureStatus!.message),
                   child: AbyssLKeyboardHint(
                     widget.settings.captureShortcut.displayName,
                   ),
@@ -1228,6 +1320,7 @@ class _MainShellState extends State<MainShell> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 900;
+        final compactBridge = compact || constraints.maxWidth < 1180;
         final tightHeight = constraints.maxHeight < 620;
         final horizontalPadding = compact ? 12.0 : 20.0;
         return Padding(
@@ -1239,15 +1332,11 @@ class _MainShellState extends State<MainShell> {
           ),
           child: Column(
             children: [
-              Expanded(
-                flex: 58,
-                child: _translatorSourcePane(compact: compact),
-              ),
+              Expanded(child: _translatorSourcePane(compact: compact)),
               SizedBox(height: compact ? 10 : 18),
-              _translatorBridge(compact: compact),
+              _translatorBridge(compact: compactBridge),
               SizedBox(height: compact ? 12 : 20),
               Expanded(
-                flex: 42,
                 child: _translatorResultPane(
                   compact: compact,
                   tightHeight: tightHeight,
@@ -1279,9 +1368,10 @@ class _MainShellState extends State<MainShell> {
                   minLines: 1,
                   maxLines: 1,
                   style: const TextStyle(fontSize: 14),
-                  decoration: const InputDecoration(
-                    hintText:
-                        'Provide context or instructions for translation…',
+                  decoration: InputDecoration(
+                    hintText: AbyssLAppLocalizations.of(
+                      context,
+                    ).text('Provide context or instructions for translation…'),
                     filled: false,
                     isDense: true,
                     border: InputBorder.none,
@@ -1311,8 +1401,10 @@ class _MainShellState extends State<MainShell> {
               fontSize: widget.settings.editorFontSize,
               height: 1.75,
             ),
-            decoration: const InputDecoration(
-              hintText: 'Type or paste your source text here…',
+            decoration: InputDecoration(
+              hintText: AbyssLAppLocalizations.of(
+                context,
+              ).text('Type or paste your source text here…'),
               filled: true,
               fillColor: Colors.transparent,
               border: InputBorder.none,
@@ -1377,7 +1469,7 @@ class _MainShellState extends State<MainShell> {
                         ),
                       ),
                       IconButton(
-                        tooltip: 'Close style options',
+                        tooltip: _t('Close style options'),
                         onPressed: _styleMenuController.close,
                         icon: const Icon(Icons.close, size: 19),
                       ),
@@ -1447,7 +1539,7 @@ class _MainShellState extends State<MainShell> {
         onPressed: () =>
             controller.isOpen ? controller.close() : controller.open(),
         icon: const Icon(Icons.tune, size: 19),
-        label: Text(compact ? _styleSummary : 'Style: $_styleSummary'),
+        label: Text(compact ? _styleSummary : '${_t('Style')}: $_styleSummary'),
         style: TextButton.styleFrom(
           foregroundColor: Theme.of(context).colorScheme.onSurface,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
@@ -1516,8 +1608,8 @@ class _MainShellState extends State<MainShell> {
           IconButton.outlined(
             key: const ValueKey('swap-languages'),
             tooltip: _canSwapTranslatorLanguages
-                ? 'Swap source and target languages'
-                : 'Choose a fixed source language to swap languages',
+                ? _t('Swap source and target languages')
+                : _t('Choose a fixed source language to swap languages'),
             onPressed: _isBusy || !_canSwapTranslatorLanguages
                 ? null
                 : _swapTranslatorLanguages,
@@ -1554,13 +1646,13 @@ class _MainShellState extends State<MainShell> {
           const Spacer(),
           if (compact)
             IconButton(
-              tooltip: 'Clear source and translation',
+              tooltip: _t('Clear source and translation'),
               onPressed: _isBusy ? null : _clearTranslatorTexts,
               icon: const Icon(Icons.close),
             )
           else
             Tooltip(
-              message: 'Clear source and translation',
+              message: _t('Clear source and translation'),
               child: OutlinedButton.icon(
                 onPressed: _isBusy ? null : _clearTranslatorTexts,
                 icon: const Icon(Icons.close, size: 18),
@@ -1590,7 +1682,7 @@ class _MainShellState extends State<MainShell> {
           initialValue: value,
           isExpanded: true,
           decoration: InputDecoration(
-            labelText: label,
+            labelText: _t(label),
             prefixIcon: Icon(leading, size: 18),
             isDense: true,
             contentPadding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
@@ -1635,7 +1727,7 @@ class _MainShellState extends State<MainShell> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
-                      tooltip: 'Copy translation',
+                      tooltip: _t('Copy translation'),
                       onPressed: enabled
                           ? () => Clipboard.setData(
                               ClipboardData(text: value.text),
@@ -1644,7 +1736,7 @@ class _MainShellState extends State<MainShell> {
                       icon: const Icon(Icons.copy_outlined, size: 20),
                     ),
                     IconButton(
-                      tooltip: 'Alternatives',
+                      tooltip: _t('Generate more alternatives'),
                       onPressed: enabled ? _suggestAlternatives : null,
                       icon: const Icon(Icons.auto_awesome, size: 20),
                     ),
@@ -1666,7 +1758,7 @@ class _MainShellState extends State<MainShell> {
                   OutlinedButton.icon(
                     onPressed: enabled ? _suggestAlternatives : null,
                     icon: const Icon(Icons.auto_awesome, size: 18),
-                    label: const Text('Alternatives'),
+                    label: const Text('More alternatives'),
                   ),
                 ],
               );
@@ -1688,8 +1780,10 @@ class _MainShellState extends State<MainShell> {
           fontSize: widget.settings.editorFontSize,
           height: 1.65,
         ),
-        decoration: const InputDecoration(
-          hintText: 'Your translation will appear here…',
+        decoration: InputDecoration(
+          hintText: AbyssLAppLocalizations.of(
+            context,
+          ).text('Your translation will appear here…'),
           filled: true,
           fillColor: Colors.transparent,
           border: InputBorder.none,
@@ -1702,19 +1796,21 @@ class _MainShellState extends State<MainShell> {
   }
 
   Widget _translatorSuggestions({required bool compact}) {
+    final title = _alternativesSuggestionTitle();
+    final values = _alternatives.isEmpty ? _synonyms : _alternatives;
     if (compact) {
-      final suggestions = [..._synonyms, ..._alternatives];
       return SizedBox(
         height: 48,
         child: ListView.separated(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           scrollDirection: Axis.horizontal,
-          itemCount: suggestions.length,
+          itemCount: values.length,
           separatorBuilder: (context, index) => const SizedBox(width: 6),
           itemBuilder: (context, index) => ActionChip(
-            label: Text(suggestions[index]),
+            tooltip: title,
+            label: Text(values[index]),
             onPressed: () =>
-                Clipboard.setData(ClipboardData(text: suggestions[index])),
+                Clipboard.setData(ClipboardData(text: values[index])),
           ),
         ),
       );
@@ -1723,38 +1819,38 @@ class _MainShellState extends State<MainShell> {
       height: 106,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
-        child: Row(
+        child: Column(
           children: [
-            Expanded(
-              child: _chipPanel(
-                title: 'Synonyms',
-                values: _synonyms,
-                controller: _synonymsScrollController,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
+            SizedBox(
+              height: 42,
+              child: Row(
                 children: [
-                  SizedBox(
-                    height: 42,
+                  Expanded(
                     child: TextField(
                       controller: _alternativesInstructionController,
-                      decoration: const InputDecoration(
-                        labelText: 'Alternative instruction',
+                      decoration: InputDecoration(
+                        labelText: AbyssLAppLocalizations.of(
+                          context,
+                        ).text('Alternative instruction (optional)'),
                         isDense: true,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  Expanded(
-                    child: _chipPanel(
-                      title: 'Alternatives',
-                      values: _alternatives,
-                      controller: _alternativesScrollController,
-                    ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: _isBusy ? null : _suggestAlternatives,
+                    icon: const Icon(Icons.auto_awesome, size: 18),
+                    label: const Text('Generate more'),
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 6),
+            Expanded(
+              child: _chipPanel(
+                title: title,
+                values: values,
+                controller: _synonymsScrollController,
               ),
             ),
           ],
@@ -1763,11 +1859,26 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
+  String _alternativesSuggestionTitle() {
+    final localizations = AbyssLAppLocalizations.of(context);
+    if (_alternatives.isEmpty) {
+      return localizations.text('Suggestions for the full translation');
+    }
+    final subject = _alternativesSubject;
+    if (subject == null || subject.trim().isEmpty) {
+      return localizations.text('Alternatives for the full translation');
+    }
+    final conciseSubject = subject.trim().length > 52
+        ? '${subject.trim().substring(0, 49)}…'
+        : subject.trim();
+    return '${localizations.text('Alternatives for')} “$conciseSubject”';
+  }
+
   Widget _autoTranslateSwitch({bool compact = false}) {
     return Tooltip(
       message: widget.settings.autoTranslateEnabled
-          ? 'Auto translate after Source changes'
-          : 'Manual translation only',
+          ? _t('Translate automatically after source changes')
+          : _t('Manual translation only'),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1789,6 +1900,7 @@ class _MainShellState extends State<MainShell> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 900;
+        final compactBridge = compact || constraints.maxWidth < 1180;
         final tightHeight = constraints.maxHeight < 620;
         final padding = compact ? 12.0 : 20.0;
         return Padding(
@@ -1805,7 +1917,7 @@ class _MainShellState extends State<MainShell> {
                 child: _correctionSourcePane(compact: compact),
               ),
               SizedBox(height: compact ? 10 : 18),
-              _correctionBridge(compact: compact),
+              _correctionBridge(compact: compactBridge),
               SizedBox(height: compact ? 12 : 20),
               Expanded(
                 flex: 44,
@@ -1839,9 +1951,10 @@ class _MainShellState extends State<MainShell> {
                   controller: _correctionInstructionController,
                   minLines: 1,
                   maxLines: 1,
-                  decoration: const InputDecoration(
-                    hintText:
-                        'Describe how the text should be corrected or rewritten…',
+                  decoration: InputDecoration(
+                    hintText: _t(
+                      'Describe how the text should be corrected or rewritten…',
+                    ),
                     filled: false,
                     isDense: true,
                     border: InputBorder.none,
@@ -1880,8 +1993,8 @@ class _MainShellState extends State<MainShell> {
               fontSize: widget.settings.editorFontSize,
               height: 1.7,
             ),
-            decoration: const InputDecoration(
-              hintText: 'Type or paste the text you want to improve…',
+            decoration: InputDecoration(
+              hintText: _t('Type or paste the text you want to improve…'),
               filled: true,
               fillColor: Colors.transparent,
               border: InputBorder.none,
@@ -1896,7 +2009,7 @@ class _MainShellState extends State<MainShell> {
             child: ValueListenableBuilder<TextEditingValue>(
               valueListenable: _correctionInputController,
               builder: (context, value, _) => Text(
-                '${value.text.length} characters',
+                '${value.text.length} ${_t('characters')}',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
@@ -1953,13 +2066,13 @@ class _MainShellState extends State<MainShell> {
           const Spacer(),
           if (compact)
             IconButton(
-              tooltip: 'Clear input and correction',
+              tooltip: _t('Clear input and correction'),
               onPressed: _isBusy ? null : _clearCorrectionTexts,
               icon: const Icon(Icons.close),
             )
           else
             Tooltip(
-              message: 'Clear input and correction',
+              message: _t('Clear input and correction'),
               child: OutlinedButton.icon(
                 onPressed: _isBusy ? null : _clearCorrectionTexts,
                 icon: const Icon(Icons.close, size: 18),
@@ -1999,7 +2112,7 @@ class _MainShellState extends State<MainShell> {
             valueListenable: _correctionOutputController,
             builder: (context, value, _) => compact
                 ? IconButton(
-                    tooltip: 'Copy result',
+                    tooltip: _t('Copy result'),
                     onPressed: value.text.isEmpty
                         ? null
                         : () => Clipboard.setData(
@@ -2033,8 +2146,8 @@ class _MainShellState extends State<MainShell> {
           fontSize: widget.settings.editorFontSize,
           height: 1.65,
         ),
-        decoration: const InputDecoration(
-          hintText: 'The corrected or rewritten text will appear here…',
+        decoration: InputDecoration(
+          hintText: _t('The corrected or rewritten text will appear here…'),
           filled: true,
           fillColor: Colors.transparent,
           border: InputBorder.none,
@@ -2094,6 +2207,7 @@ class _MainShellState extends State<MainShell> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 900;
+        final compactBridge = compact || constraints.maxWidth < 1180;
         final padding = compact ? 12.0 : 20.0;
         return Padding(
           padding: EdgeInsets.fromLTRB(
@@ -2106,7 +2220,7 @@ class _MainShellState extends State<MainShell> {
             children: [
               Expanded(flex: 56, child: _documentIntakePane(compact: compact)),
               SizedBox(height: compact ? 10 : 18),
-              _documentOptionsBridge(compact: compact, formats: formats),
+              _documentOptionsBridge(compact: compactBridge, formats: formats),
               SizedBox(height: compact ? 12 : 20),
               Expanded(flex: 44, child: _documentResultsPane(compact: compact)),
             ],
@@ -2131,7 +2245,7 @@ class _MainShellState extends State<MainShell> {
               children: [
                 if (compact)
                   IconButton.filled(
-                    tooltip: 'Add files',
+                    tooltip: _t('Add files'),
                     onPressed: _pickDocumentFiles,
                     icon: const Icon(Icons.note_add_outlined),
                   )
@@ -2144,7 +2258,7 @@ class _MainShellState extends State<MainShell> {
                 const SizedBox(width: 8),
                 if (compact)
                   IconButton.outlined(
-                    tooltip: 'Add folder',
+                    tooltip: _t('Add folder'),
                     onPressed: _pickDocumentFolder,
                     icon: const Icon(Icons.create_new_folder_outlined),
                   )
@@ -2160,7 +2274,7 @@ class _MainShellState extends State<MainShell> {
                 const SizedBox(width: 8),
                 if (compact)
                   IconButton.outlined(
-                    tooltip: 'Output folder',
+                    tooltip: _t('Output folder'),
                     onPressed: _pickOutputFolder,
                     icon: const Icon(Icons.folder_open_outlined),
                   )
@@ -2173,7 +2287,7 @@ class _MainShellState extends State<MainShell> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    _documentOutputDirectory ?? 'No output folder selected',
+                    _documentOutputDirectory ?? _t('No output folder selected'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -2184,7 +2298,7 @@ class _MainShellState extends State<MainShell> {
                 if (_documentJobs.isNotEmpty) ...[
                   const SizedBox(width: 8),
                   Text(
-                    '${_documentJobs.length} queued',
+                    '${_documentJobs.length} ${_t('queued')}',
                     style: Theme.of(context).textTheme.labelMedium,
                   ),
                 ],
@@ -2196,8 +2310,8 @@ class _MainShellState extends State<MainShell> {
               child: TextField(
                 key: const ValueKey('document-instruction'),
                 controller: _documentInstructionController,
-                decoration: const InputDecoration(
-                  hintText: 'Optional instruction for all documents…',
+                decoration: InputDecoration(
+                  hintText: _t('Optional instruction for all documents…'),
                   prefixIcon: Icon(Icons.tune, size: 18),
                   isDense: true,
                 ),
@@ -2334,7 +2448,7 @@ class _MainShellState extends State<MainShell> {
           title: Text(job.displayName),
           subtitle: Text(job.statusMessage ?? job.inputKind.name),
           trailing: IconButton(
-            tooltip: 'Remove',
+            tooltip: _t('Remove'),
             icon: const Icon(Icons.close),
             onPressed: () => setState(
               () => _documentJobs = [..._documentJobs]..removeAt(index),
@@ -2400,7 +2514,7 @@ class _MainShellState extends State<MainShell> {
     return DropdownButtonFormField<T>(
       initialValue: value,
       isExpanded: true,
-      decoration: InputDecoration(labelText: label),
+      decoration: InputDecoration(labelText: _t(label)),
       items: values
           .map(
             (item) => DropdownMenuItem<T>(
@@ -2443,6 +2557,7 @@ class _SettingsDialogSnapshot {
     final localRequestTimeoutSeconds = settings.localRequestTimeoutSeconds;
     final selectedProvider = settings.selectedProvider;
     final themeMode = settings.themeMode;
+    final appLanguage = settings.appLanguage;
     final llmProfiles = List<LLMProfile>.unmodifiable(settings.llmProfiles);
     final selectedLLMProfileID = settings.selectedLLMProfileID;
     final llmReasoningSettings =
@@ -2492,6 +2607,7 @@ class _SettingsDialogSnapshot {
       target.localRequestTimeoutSeconds = localRequestTimeoutSeconds;
       target.selectedProvider = selectedProvider;
       target.themeMode = themeMode;
+      target.appLanguage = appLanguage;
       target.llmProfiles = llmProfiles;
       target.selectedLLMProfileID = selectedLLMProfileID;
       target.llmReasoningSettings = llmReasoningSettings;
@@ -2568,6 +2684,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
   var _loadingAppInfo = false;
   var _checkingForUpdates = false;
   var _startingUpdate = false;
+
+  String _t(String value) => AbyssLAppLocalizations.of(context).text(value);
 
   @override
   void initState() {
@@ -2706,7 +2824,10 @@ class _SettingsDialogState extends State<SettingsDialog> {
         timeout: widget.settings.timeoutFor(provider),
       );
       if (mounted) {
-        setState(() => _message = '${provider.label} connection OK.');
+        setState(
+          () => _message =
+              '${_t(provider.label)}: ${_t('Connection successful.')}',
+        );
       }
     } catch (error) {
       if (mounted) setState(() => _message = '$error');
@@ -2818,7 +2939,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
         if (!mounted) return;
       }
       setState(() {
-        _message = 'Reasoning options: ${fetched.allowedOptions.join(', ')}.';
+        _message =
+            '${_t('Reasoning options')}: ${fetched.allowedOptions.join(', ')}.';
       });
     } catch (error) {
       if (mounted) setState(() => _message = '$error');
@@ -2910,15 +3032,15 @@ class _SettingsDialogState extends State<SettingsDialog> {
     required Object? reasoningError,
   }) {
     final modelMessage = autoModel != null
-        ? 'Detected local model: ${autoModel.requestName}.'
+        ? '${_t('Detected local model')}: ${autoModel.requestName}.'
         : catalog.isEmpty
-        ? 'No local models were returned by /api/v1/models or /v1/models.'
-        : 'Found ${catalog.length} local models. Select one or enter the model name manually.';
+        ? _t('No local models were returned by /api/v1/models or /v1/models.')
+        : '${_t('Local models found')}: ${catalog.length}. ${_t('Select one or enter the model name manually.')}';
     if (reasoningOptions != null) {
-      return '$modelMessage Reasoning options: ${reasoningOptions.allowedOptions.join(', ')}.';
+      return '$modelMessage ${_t('Reasoning options')}: ${reasoningOptions.allowedOptions.join(', ')}.';
     }
     if (reasoningError != null) {
-      return '$modelMessage Reasoning metadata unavailable: $reasoningError';
+      return '$modelMessage ${_t('Reasoning metadata unavailable')}: $reasoningError';
     }
     return modelMessage;
   }
@@ -2997,13 +3119,14 @@ class _SettingsDialogState extends State<SettingsDialog> {
       setState(() {
         _appBuildInfo = buildInfo;
         _aboutStatus =
-            'Installed version ${buildInfo.displayVersion}. Check GitHub for updates.';
+            '${_t('Installed version')} ${buildInfo.displayVersion}. ${_t('Check GitHub for updates.')}';
       });
       return buildInfo;
     } catch (error) {
       if (mounted) {
         setState(() {
-          _aboutStatus = 'Could not read the installed app version: $error';
+          _aboutStatus =
+              '${_t('Could not read the installed app version')}: $error';
         });
       }
       return null;
@@ -3020,7 +3143,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
     setState(() {
       _checkingForUpdates = true;
       _updateCheckResult = null;
-      _aboutStatus = 'Checking the latest published GitHub release…';
+      _aboutStatus = _t('Checking the latest published GitHub release…');
     });
     try {
       final result = await _updateService.checkForUpdates(buildInfo);
@@ -3028,14 +3151,15 @@ class _SettingsDialogState extends State<SettingsDialog> {
       setState(() {
         _updateCheckResult = result;
         _aboutStatus = switch (result.kind) {
-          UpdateCheckKind.noPublishedRelease =>
+          UpdateCheckKind.noPublishedRelease => _t(
             'No AbyssL release has been published on GitHub yet.',
+          ),
           UpdateCheckKind.upToDate =>
-            'AbyssL ${buildInfo!.version} is the newest published version.',
+            'AbyssL ${buildInfo!.version} ${_t('is the newest published version.')}',
           UpdateCheckKind.updateAvailable =>
-            'AbyssL ${result.release!.version} is available. The signed update can be downloaded and installed automatically.',
+            'AbyssL ${result.release!.version} ${_t('is available. The signed update can be downloaded and installed automatically.')}',
           UpdateCheckKind.releaseNotReady =>
-            'AbyssL ${result.release!.version} is published, but its signed macOS update files are not available yet.',
+            'AbyssL ${result.release!.version} ${_t('is published, but its signed macOS update files are not available yet.')}',
         };
       });
     } catch (error) {
@@ -3053,8 +3177,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
     if (_startingUpdate || _checkingForUpdates) return;
     setState(() {
       _startingUpdate = true;
-      _aboutStatus =
-          'Opening the secure macOS updater. It will verify, install, and relaunch AbyssL.';
+      _aboutStatus = _t(
+        'Opening the secure macOS updater. It will verify, install, and relaunch AbyssL.',
+      );
     });
     try {
       await _updateService.startAutomaticInstall();
@@ -3370,6 +3495,33 @@ class _SettingsDialogState extends State<SettingsDialog> {
         ),
         const SizedBox(height: 16),
         _settingsSectionCard(
+          icon: Icons.language_outlined,
+          title: 'Application language',
+          subtitle: 'Follow the macOS language or choose an app language.',
+          child: DropdownButtonFormField<AppLanguage>(
+            key: ValueKey('app-language-${settings.appLanguage.name}'),
+            initialValue: settings.appLanguage,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: AbyssLAppLocalizations.of(context).text('Language'),
+            ),
+            items: AppLanguage.values
+                .map(
+                  (language) => DropdownMenuItem(
+                    value: language,
+                    child: Text(language.label),
+                  ),
+                )
+                .toList(),
+            onChanged: (language) {
+              if (language != null) {
+                settings.update((settings) => settings.appLanguage = language);
+              }
+            },
+          ),
+        ),
+        const SizedBox(height: 16),
+        _settingsSectionCard(
           icon: Icons.route_outlined,
           title: 'Default provider',
           subtitle: 'Select the service used for new requests.',
@@ -3378,7 +3530,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
               key: ValueKey(settings.selectedProvider),
               initialValue: settings.selectedProvider,
               isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Provider'),
+              decoration: InputDecoration(labelText: _t('Provider')),
               items: TranslationProvider.values
                   .map(
                     (provider) => DropdownMenuItem(
@@ -3395,9 +3547,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 }
               },
             ),
-            const InputDecorator(
-              decoration: InputDecoration(labelText: 'Configuration'),
-              child: Text('Edit endpoints and models under AI Providers'),
+            InputDecorator(
+              decoration: InputDecoration(labelText: _t('Configuration')),
+              child: const Text('Edit endpoints and models under AI Providers'),
             ),
           ]),
         ),
@@ -3440,8 +3592,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                   key: ValueKey(settings.captureShortcutModifier),
                   initialValue: settings.captureShortcutModifier,
                   isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Capture modifier',
+                  decoration: InputDecoration(
+                    labelText: _t('Capture modifier'),
                   ),
                   items: TranslationCaptureModifier.values
                       .map(
@@ -3461,7 +3613,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 ),
                 TextField(
                   controller: _captureKey,
-                  decoration: const InputDecoration(labelText: 'Capture key'),
+                  decoration: InputDecoration(labelText: _t('Capture key')),
                 ),
               ]),
             ],
@@ -3538,9 +3690,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
           TextField(
             key: ValueKey('provider-base-url-${provider.name}'),
             controller: _baseUrlController(provider),
-            decoration: const InputDecoration(
-              labelText: 'Base URL',
-              helperText: 'Include the API path, for example /v1.',
+            decoration: InputDecoration(
+              labelText: _t('Base URL'),
+              helperText: _t('Include the API path, for example /v1.'),
             ),
             keyboardType: TextInputType.url,
             autocorrect: false,
@@ -3550,14 +3702,14 @@ class _SettingsDialogState extends State<SettingsDialog> {
             TextField(
               key: ValueKey('provider-model-${provider.name}'),
               controller: _modelController(provider),
-              decoration: const InputDecoration(labelText: 'Model ID'),
+              decoration: InputDecoration(labelText: _t('Model ID')),
               autocorrect: false,
             ),
             TextField(
               key: ValueKey('provider-timeout-${provider.name}'),
               controller: _timeoutController(provider),
-              decoration: const InputDecoration(
-                labelText: 'Timeout seconds',
+              decoration: InputDecoration(
+                labelText: _t('Timeout seconds'),
                 helperText: '0 uses the client default.',
               ),
               keyboardType: TextInputType.number,
@@ -3575,7 +3727,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
               ),
               initialValue: settings.authModeFor(provider),
               isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Authentication'),
+              decoration: InputDecoration(labelText: _t('Authentication')),
               items: ApiAuthMode.values
                   .map(
                     (mode) =>
@@ -3590,9 +3742,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
               key: ValueKey('provider-api-key-${provider.name}'),
               controller: _apiKeyController(provider),
               enabled: settings.authModeFor(provider) != ApiAuthMode.none,
-              decoration: const InputDecoration(
-                labelText: 'API key',
-                helperText: 'Stored in the operating system keychain.',
+              decoration: InputDecoration(
+                labelText: _t('API key'),
+                helperText: _t('Stored in the operating system keychain.'),
               ),
               obscureText: true,
               autocorrect: false,
@@ -3604,9 +3756,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
             TextField(
               key: const ValueKey('anthropic-version'),
               controller: _anthropicVersion,
-              decoration: const InputDecoration(
-                labelText: 'Anthropic version header',
-                helperText: 'Default: 2023-06-01',
+              decoration: InputDecoration(
+                labelText: _t('Anthropic version header'),
+                helperText: '${_t('Default')}: 2023-06-01',
               ),
               autocorrect: false,
             ),
@@ -3715,7 +3867,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
       ),
       initialValue: names.contains(current) ? current : null,
       isExpanded: true,
-      decoration: const InputDecoration(labelText: 'Available models'),
+      decoration: InputDecoration(labelText: _t('Available models')),
       items: models
           .map(
             (model) => DropdownMenuItem(
@@ -3752,8 +3904,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
       setState(() {
         _providerModels[provider] = models;
         _message = models.isEmpty
-            ? 'No models were returned. Enter a model ID manually.'
-            : 'Found ${models.length} models.';
+            ? _t('No models were returned. Enter a model ID manually.')
+            : '${_t('Models found')}: ${models.length}.';
       });
     } catch (error) {
       if (mounted) setState(() => _message = '$error');
@@ -3794,7 +3946,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 child: Image.asset(
                   'assets/branding/abyssl_mark.png',
                   key: const ValueKey('about-logo'),
-                  semanticLabel: 'AbyssL logo',
+                  semanticLabel: _t('AbyssL logo'),
                   fit: BoxFit.contain,
                   filterQuality: FilterQuality.high,
                 ),
@@ -3820,8 +3972,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                   const SizedBox(height: 5),
                   Text(
                     _loadingAppInfo
-                        ? 'Version loading…'
-                        : 'Version ${buildInfo?.displayVersion ?? 'unavailable'}',
+                        ? _t('Version loading…')
+                        : '${_t('Version')} ${buildInfo?.displayVersion ?? _t('unavailable')}',
                     key: const ValueKey('about-version'),
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -4086,7 +4238,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
       key: ValueKey('$label|${options.join('|')}|$current'),
       initialValue: options.contains(current) ? current : null,
       isExpanded: true,
-      decoration: InputDecoration(labelText: label),
+      decoration: InputDecoration(labelText: _t(label)),
       items: options
           .map(
             (option) => DropdownMenuItem(
@@ -4126,7 +4278,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
     return options.isEmpty ? const ['off'] : options;
   }
 
-  String _reasoningOptionLabel(String option) => switch (option) {
+  String _reasoningOptionLabel(String option) => _t(switch (option) {
     'none' => 'None',
     'off' => 'Off',
     'on' => 'On',
@@ -4134,5 +4286,5 @@ class _SettingsDialogState extends State<SettingsDialog> {
     'medium' => 'Medium',
     'high' => 'High',
     _ => option,
-  };
+  });
 }
