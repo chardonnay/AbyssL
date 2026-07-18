@@ -395,7 +395,7 @@ class DocumentProcessingService {
     final tool = await _findExecutable(['pdftotext', 'mutool']);
     if (tool == null) {
       throw const DocumentProcessingException(
-        'PDF text extraction requires platform support or a pdftotext/mutool executable on PATH.',
+        'PDF text extraction is unavailable in this build. On macOS, rebuild and restart AbyssL to enable its built-in PDF reader. On other platforms, install Poppler (pdftotext) or MuPDF (mutool) and make it available on PATH. Scanned PDFs additionally require OCR.',
       );
     }
     final result = tool.endsWith('mutool') || p.basename(tool) == 'mutool'

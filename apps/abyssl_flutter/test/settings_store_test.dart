@@ -66,6 +66,25 @@ void main() {
     expect(reloaded.autoTranslateEnabled, isFalse);
   });
 
+  test('persists the application-language preference', () async {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    SharedPreferences.setMockInitialValues({});
+    final secureStorage = _MemorySecureStorage();
+    final preferences = await SharedPreferencesWithCache.create(
+      cacheOptions: const SharedPreferencesWithCacheOptions(),
+    );
+    final settings = AppSettingsStore(
+      preferences: preferences,
+      secureStorage: secureStorage,
+    )..appLanguage = AppLanguage.croatian;
+
+    await settings.save();
+
+    final reloaded = await AppSettingsStore.load(secureStorage: secureStorage);
+    expect(reloaded.appLanguage, AppLanguage.croatian);
+  });
+
   test(
     'persists provider schema v2 and keeps all secrets out of preferences',
     () async {

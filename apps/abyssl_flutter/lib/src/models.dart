@@ -54,6 +54,44 @@ enum AppThemeMode {
   };
 }
 
+/// The user-interface languages shared by the AbyssL desktop app and website.
+/// [system] leaves locale selection to the operating system.
+enum AppLanguage {
+  system,
+  english,
+  german,
+  french,
+  spanish,
+  portuguese,
+  italian,
+  dutch,
+  croatian;
+
+  String get label => switch (this) {
+    AppLanguage.system => 'System default',
+    AppLanguage.english => 'English',
+    AppLanguage.german => 'Deutsch',
+    AppLanguage.french => 'Français',
+    AppLanguage.spanish => 'Español',
+    AppLanguage.portuguese => 'Português',
+    AppLanguage.italian => 'Italiano',
+    AppLanguage.dutch => 'Nederlands',
+    AppLanguage.croatian => 'Hrvatski',
+  };
+
+  String? get languageCode => switch (this) {
+    AppLanguage.system => null,
+    AppLanguage.english => 'en',
+    AppLanguage.german => 'de',
+    AppLanguage.french => 'fr',
+    AppLanguage.spanish => 'es',
+    AppLanguage.portuguese => 'pt',
+    AppLanguage.italian => 'it',
+    AppLanguage.dutch => 'nl',
+    AppLanguage.croatian => 'hr',
+  };
+}
+
 enum TranslationLanguage {
   automatic('automatic', 'auto', 'Automatic'),
   englishUS('englishUS', 'en-US', 'English (US)'),
