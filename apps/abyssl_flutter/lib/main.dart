@@ -258,7 +258,6 @@ class _MainShellState extends State<MainShell> {
   final _alternativesInstructionController = TextEditingController();
   final _documentInstructionController = TextEditingController();
   final _synonymsScrollController = ScrollController();
-  final _alternativesScrollController = ScrollController();
   Timer? _autoTranslateTimer;
   StreamSubscription<String>? _captureSubscription;
   late final AbyssLApiClient _apiClient;
@@ -320,7 +319,6 @@ class _MainShellState extends State<MainShell> {
     _alternativesInstructionController.dispose();
     _documentInstructionController.dispose();
     _synonymsScrollController.dispose();
-    _alternativesScrollController.dispose();
     super.dispose();
   }
 
@@ -524,6 +522,7 @@ class _MainShellState extends State<MainShell> {
     );
     _translationController.text = result.translation;
     _synonyms = result.synonyms;
+    _alternatives = [];
     _status = result.spellingNotes ?? '';
   });
 
@@ -1644,7 +1643,7 @@ class _MainShellState extends State<MainShell> {
                       icon: const Icon(Icons.copy_outlined, size: 20),
                     ),
                     IconButton(
-                      tooltip: 'Alternatives',
+                      tooltip: 'Generate more alternatives',
                       onPressed: enabled ? _suggestAlternatives : null,
                       icon: const Icon(Icons.auto_awesome, size: 20),
                     ),
@@ -1666,7 +1665,7 @@ class _MainShellState extends State<MainShell> {
                   OutlinedButton.icon(
                     onPressed: enabled ? _suggestAlternatives : null,
                     icon: const Icon(Icons.auto_awesome, size: 18),
-                    label: const Text('Alternatives'),
+                    label: const Text('More alternatives'),
                   ),
                 ],
               );
@@ -1719,42 +1718,41 @@ class _MainShellState extends State<MainShell> {
         ),
       );
     }
+    final suggestions = {..._synonyms, ..._alternatives}.toList();
     return SizedBox(
       height: 106,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
-        child: Row(
+        child: Column(
           children: [
-            Expanded(
-              child: _chipPanel(
-                title: 'Synonyms',
-                values: _synonyms,
-                controller: _synonymsScrollController,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
+            SizedBox(
+              height: 42,
+              child: Row(
                 children: [
-                  SizedBox(
-                    height: 42,
+                  Expanded(
                     child: TextField(
                       controller: _alternativesInstructionController,
                       decoration: const InputDecoration(
-                        labelText: 'Alternative instruction',
+                        labelText: 'Alternative instruction (optional)',
                         isDense: true,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  Expanded(
-                    child: _chipPanel(
-                      title: 'Alternatives',
-                      values: _alternatives,
-                      controller: _alternativesScrollController,
-                    ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: _isBusy ? null : _suggestAlternatives,
+                    icon: const Icon(Icons.auto_awesome, size: 18),
+                    label: const Text('Generate more'),
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 6),
+            Expanded(
+              child: _chipPanel(
+                title: 'Alternatives',
+                values: suggestions,
+                controller: _synonymsScrollController,
               ),
             ),
           ],
