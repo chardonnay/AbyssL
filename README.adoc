@@ -140,6 +140,44 @@ Settings include:
 * Editor font size.
 * Global capture shortcut modifier and key.
 
+== Analytics and Privacy
+
+AbyssL asks for explicit consent before collecting anonymous usage data on the
+first start. The choice can be changed at any time under `Settings > Privacy`.
+Analytics run only in release builds; debug, profile, and test builds neither
+queue nor send events. Consented events are sent to Aptabase and stored in the
+European Union.
+
+The event schema is deliberately small:
+
+* `app_started`: selected and resolved app language, normalized default provider,
+  and analytics schema version.
+* `feature_completed`, `feature_failed`, and `feature_cancelled`: normalized
+  feature, operation, trigger, provider, duration, and outcome category.
+  Translation events add only the language pair and style categories. Document
+  events add only job/result counts, coarse input and export formats, and enabled
+  correction/translation options.
+* `translation_style_changed`: changed style dimension and normalized old/new
+  values.
+* `setting_changed`: saved changes to the app-language or default-provider
+  category.
+
+Each event also carries operating-system and app versions plus the system locale.
+Provider values are reduced to `openai`, `anthropic`, `ollama`, `lm_studio`, or
+a compatible-provider fallback. AbyssL never includes user text, prompts,
+instructions, translations, document contents, file names or paths, API keys,
+model names, URLs or endpoints, clipboard contents, or raw errors. It creates no
+persistent user, device, or installation identifier; sessions use only a
+short-lived random identifier generated in memory. A copy can exist only inside
+an unsent queued event until that event is delivered, revoked, or expires.
+
+When Aptabase cannot be reached, up to 500 consented events remain in a local
+offline queue with their original timestamps. Requests contain no more than 25
+events and retry after 15 seconds, one minute, and then at most every five
+minutes. Unsent events are discarded shortly before Aptabase's 24-hour age
+limit. Disabling analytics cancels retries and active delivery and immediately
+clears the queue.
+
 == Translation Workflow
 
 Translator mode supports:

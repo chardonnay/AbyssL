@@ -43,6 +43,30 @@ class AbyssLAppLocalizations {
   static const _copy = <String, Map<String, String>>{
     'en': {},
     'de': {
+      'Privacy': 'Datenschutz',
+      'Share anonymous usage data?': 'Anonyme Nutzungsdaten teilen?',
+      'Help improve AbyssL by sharing anonymous usage data.':
+          'Hilf dabei, AbyssL zu verbessern, indem du anonyme Nutzungsdaten teilst.',
+      'Aptabase stores the data in the European Union.':
+          'Aptabase speichert die Daten in der Europäischen Union.',
+      'Collected: operating system and app version, system and app language, used feature, provider category, duration and outcome, language pair, style choices, and coarse document formats, options, and counts.':
+          'Erfasst werden: Betriebssystem und App-Version, System- und App-Sprache, verwendete Funktion, Anbieterkategorie, Dauer und Ergebnis, Sprachpaar, Stiloptionen sowie grobe Dokumentformate, Optionen und Anzahlen.',
+      'When offline, unsent events are stored locally for less than 24 hours. Turning analytics off deletes them.':
+          'Bei fehlender Internetverbindung werden nicht gesendete Ereignisse für weniger als 24 Stunden lokal gespeichert. Beim Deaktivieren werden sie gelöscht.',
+      'Never collected: your texts, prompts, instructions, translations, document contents, file names or paths, API keys, models, URLs or endpoints, clipboard contents, or raw errors.':
+          'Nie erfasst werden: deine Texte, Prompts, Anweisungen, Übersetzungen, Dokumentinhalte, Dateinamen oder -pfade, API-Schlüssel, Modelle, URLs oder Endpunkte, Zwischenablageinhalte oder unbearbeitete Fehler.',
+      'No persistent user, device, host, or installation identifier is created.':
+          'Es wird keine dauerhafte Benutzer-, Geräte-, Host- oder Installationskennung erstellt.',
+      'Allow': 'Erlauben',
+      "Don't allow": 'Nicht erlauben',
+      'Later': 'Später',
+      'Anonymous usage data': 'Anonyme Nutzungsdaten',
+      'Allow AbyssL to send anonymous usage data':
+          'AbyssL das Senden anonymer Nutzungsdaten erlauben',
+      'Not decided. You will be asked again next time AbyssL starts.':
+          'Noch nicht entschieden. Beim nächsten Start von AbyssL wirst du erneut gefragt.',
+      'Analytics are enabled.': 'Die Analytics-Erfassung ist aktiviert.',
+      'Analytics are disabled.': 'Die Analytics-Erfassung ist deaktiviert.',
       'System default': 'Systemstandard',
       'English': 'Englisch',
       'French': 'Französisch',
@@ -317,6 +341,31 @@ class AbyssLAppLocalizations {
           'Das Exportformat ist auf diesem System nicht verfügbar.',
     },
     'fr': {
+      'Privacy': 'Confidentialité',
+      'Share anonymous usage data?':
+          "Partager des données d'utilisation anonymes ?",
+      'Help improve AbyssL by sharing anonymous usage data.':
+          "Aidez-nous à améliorer AbyssL en partageant des données d'utilisation anonymes.",
+      'Aptabase stores the data in the European Union.':
+          "Aptabase stocke les données dans l'Union européenne.",
+      'Collected: operating system and app version, system and app language, used feature, provider category, duration and outcome, language pair, style choices, and coarse document formats, options, and counts.':
+          "Données collectées : système d'exploitation et version de l'application, langue du système et de l'application, fonctionnalité utilisée, catégorie du fournisseur, durée et résultat, paire de langues, choix de style ainsi que formats, options et nombres globaux des documents.",
+      'When offline, unsent events are stored locally for less than 24 hours. Turning analytics off deletes them.':
+          "Hors ligne, les événements non envoyés sont stockés localement pendant moins de 24 heures. La désactivation de l'analyse les supprime.",
+      'Never collected: your texts, prompts, instructions, translations, document contents, file names or paths, API keys, models, URLs or endpoints, clipboard contents, or raw errors.':
+          'Données jamais collectées : vos textes, prompts, instructions, traductions, contenus de documents, noms ou chemins de fichiers, clés API, modèles, URL ou points de terminaison, contenu du presse-papiers ou erreurs brutes.',
+      'No persistent user, device, host, or installation identifier is created.':
+          "Aucun identifiant persistant d'utilisateur, d'appareil, d'hôte ou d'installation n'est créé.",
+      'Allow': 'Autoriser',
+      "Don't allow": 'Ne pas autoriser',
+      'Later': 'Plus tard',
+      'Anonymous usage data': "Données d'utilisation anonymes",
+      'Allow AbyssL to send anonymous usage data':
+          "Autoriser AbyssL à envoyer des données d'utilisation anonymes",
+      'Not decided. You will be asked again next time AbyssL starts.':
+          "Aucune décision. La question vous sera reposée au prochain démarrage d'AbyssL.",
+      'Analytics are enabled.': 'Les données analytiques sont activées.',
+      'Analytics are disabled.': 'Les données analytiques sont désactivées.',
       'System default': 'Par défaut du système',
       'Translate': 'Traduire',
       'Correction': 'Correction',
@@ -511,6 +560,30 @@ class AbyssLAppLocalizations {
       'Local OpenAI-compatible': 'Compatible OpenAI local',
     },
     'es': {
+      'Privacy': 'Privacidad',
+      'Share anonymous usage data?': '¿Compartir datos de uso anónimos?',
+      'Help improve AbyssL by sharing anonymous usage data.':
+          'Ayuda a mejorar AbyssL compartiendo datos de uso anónimos.',
+      'Aptabase stores the data in the European Union.':
+          'Aptabase almacena los datos en la Unión Europea.',
+      'Collected: operating system and app version, system and app language, used feature, provider category, duration and outcome, language pair, style choices, and coarse document formats, options, and counts.':
+          'Se recopilan: sistema operativo y versión de la aplicación, idioma del sistema y de la aplicación, función utilizada, categoría del proveedor, duración y resultado, par de idiomas, opciones de estilo y formatos, opciones y recuentos generales de documentos.',
+      'When offline, unsent events are stored locally for less than 24 hours. Turning analytics off deletes them.':
+          'Sin conexión, los eventos no enviados se almacenan localmente durante menos de 24 horas. Al desactivar los análisis se eliminan.',
+      'Never collected: your texts, prompts, instructions, translations, document contents, file names or paths, API keys, models, URLs or endpoints, clipboard contents, or raw errors.':
+          'Nunca se recopilan: tus textos, prompts, instrucciones, traducciones, contenido de documentos, nombres o rutas de archivos, claves de API, modelos, URL o endpoints, contenido del portapapeles ni errores sin procesar.',
+      'No persistent user, device, host, or installation identifier is created.':
+          'No se crea ningún identificador persistente de usuario, dispositivo, host o instalación.',
+      'Allow': 'Permitir',
+      "Don't allow": 'No permitir',
+      'Later': 'Más tarde',
+      'Anonymous usage data': 'Datos de uso anónimos',
+      'Allow AbyssL to send anonymous usage data':
+          'Permitir que AbyssL envíe datos de uso anónimos',
+      'Not decided. You will be asked again next time AbyssL starts.':
+          'Sin decidir. Se te volverá a preguntar la próxima vez que se inicie AbyssL.',
+      'Analytics are enabled.': 'La analítica está activada.',
+      'Analytics are disabled.': 'La analítica está desactivada.',
       'System default': 'Predeterminado del sistema',
       'Translate': 'Traducir',
       'Correction': 'Corrección',
@@ -704,6 +777,31 @@ class AbyssLAppLocalizations {
       'Local OpenAI-compatible': 'Compatible con OpenAI local',
     },
     'pt': {
+      'Privacy': 'Privacidade',
+      'Share anonymous usage data?': 'Partilhar dados de utilização anónimos?',
+      'Help improve AbyssL by sharing anonymous usage data.':
+          'Ajude a melhorar o AbyssL partilhando dados de utilização anónimos.',
+      'Aptabase stores the data in the European Union.':
+          'A Aptabase armazena os dados na União Europeia.',
+      'Collected: operating system and app version, system and app language, used feature, provider category, duration and outcome, language pair, style choices, and coarse document formats, options, and counts.':
+          'Dados recolhidos: sistema operativo e versão da aplicação, idioma do sistema e da aplicação, funcionalidade utilizada, categoria do fornecedor, duração e resultado, par de idiomas, opções de estilo e formatos, opções e contagens gerais de documentos.',
+      'When offline, unsent events are stored locally for less than 24 hours. Turning analytics off deletes them.':
+          'Sem ligação, os eventos não enviados são armazenados localmente durante menos de 24 horas. Ao desativar a análise, são eliminados.',
+      'Never collected: your texts, prompts, instructions, translations, document contents, file names or paths, API keys, models, URLs or endpoints, clipboard contents, or raw errors.':
+          'Nunca são recolhidos: os seus textos, prompts, instruções, traduções, conteúdo de documentos, nomes ou caminhos de ficheiros, chaves API, modelos, URLs ou endpoints, conteúdo da área de transferência ou erros não processados.',
+      'No persistent user, device, host, or installation identifier is created.':
+          'Não é criado qualquer identificador persistente de utilizador, dispositivo, anfitrião ou instalação.',
+      'Allow': 'Permitir',
+      "Don't allow": 'Não permitir',
+      'Later': 'Mais tarde',
+      'Anonymous usage data': 'Dados de utilização anónimos',
+      'Allow AbyssL to send anonymous usage data':
+          'Permitir que o AbyssL envie dados de utilização anónimos',
+      'Not decided. You will be asked again next time AbyssL starts.':
+          'Ainda não foi decidido. A pergunta será feita novamente da próxima vez que iniciar o AbyssL.',
+      'Analytics are enabled.': 'A recolha de dados analíticos está ativada.',
+      'Analytics are disabled.':
+          'A recolha de dados analíticos está desativada.',
       'System default': 'Padrão do sistema',
       'Translate': 'Traduzir',
       'Correction': 'Correção',
@@ -894,6 +992,30 @@ class AbyssLAppLocalizations {
       'Local OpenAI-compatible': 'Compatível com OpenAI local',
     },
     'it': {
+      'Privacy': 'Privacy',
+      'Share anonymous usage data?': 'Condividere dati di utilizzo anonimi?',
+      'Help improve AbyssL by sharing anonymous usage data.':
+          'Aiuta a migliorare AbyssL condividendo dati di utilizzo anonimi.',
+      'Aptabase stores the data in the European Union.':
+          "Aptabase archivia i dati nell'Unione europea.",
+      'Collected: operating system and app version, system and app language, used feature, provider category, duration and outcome, language pair, style choices, and coarse document formats, options, and counts.':
+          "Dati raccolti: sistema operativo e versione dell'app, lingua del sistema e dell'app, funzionalità usata, categoria del fornitore, durata e risultato, coppia di lingue, scelte di stile e formati, opzioni e conteggi generali dei documenti.",
+      'When offline, unsent events are stored locally for less than 24 hours. Turning analytics off deletes them.':
+          'Offline, gli eventi non inviati vengono archiviati localmente per meno di 24 ore. La disattivazione delle analisi li elimina.',
+      'Never collected: your texts, prompts, instructions, translations, document contents, file names or paths, API keys, models, URLs or endpoints, clipboard contents, or raw errors.':
+          'Dati mai raccolti: testi, prompt, istruzioni, traduzioni, contenuti dei documenti, nomi o percorsi dei file, chiavi API, modelli, URL o endpoint, contenuti degli appunti o errori non elaborati.',
+      'No persistent user, device, host, or installation identifier is created.':
+          'Non viene creato alcun identificatore persistente di utente, dispositivo, host o installazione.',
+      'Allow': 'Consenti',
+      "Don't allow": 'Non consentire',
+      'Later': 'Più tardi',
+      'Anonymous usage data': 'Dati di utilizzo anonimi',
+      'Allow AbyssL to send anonymous usage data':
+          'Consenti ad AbyssL di inviare dati di utilizzo anonimi',
+      'Not decided. You will be asked again next time AbyssL starts.':
+          'Non ancora deciso. Ti verrà chiesto di nuovo al prossimo avvio di AbyssL.',
+      'Analytics are enabled.': 'I dati analitici sono abilitati.',
+      'Analytics are disabled.': 'I dati analitici sono disabilitati.',
       'System default': 'Predefinito del sistema',
       'Translate': 'Traduci',
       'Correction': 'Correzione',
@@ -1087,6 +1209,30 @@ class AbyssLAppLocalizations {
       'Local OpenAI-compatible': 'Compatibile OpenAI locale',
     },
     'nl': {
+      'Privacy': 'Privacy',
+      'Share anonymous usage data?': 'Anonieme gebruiksgegevens delen?',
+      'Help improve AbyssL by sharing anonymous usage data.':
+          'Help AbyssL te verbeteren door anonieme gebruiksgegevens te delen.',
+      'Aptabase stores the data in the European Union.':
+          'Aptabase slaat de gegevens op in de Europese Unie.',
+      'Collected: operating system and app version, system and app language, used feature, provider category, duration and outcome, language pair, style choices, and coarse document formats, options, and counts.':
+          'Verzameld: besturingssysteem en appversie, systeem- en app-taal, gebruikte functie, providercategorie, duur en resultaat, talenpaar, stijlkeuzes en globale documentindelingen, opties en aantallen.',
+      'When offline, unsent events are stored locally for less than 24 hours. Turning analytics off deletes them.':
+          'Offline worden niet-verzonden gebeurtenissen minder dan 24 uur lokaal bewaard. Als je analytics uitschakelt, worden ze verwijderd.',
+      'Never collected: your texts, prompts, instructions, translations, document contents, file names or paths, API keys, models, URLs or endpoints, clipboard contents, or raw errors.':
+          "Nooit verzameld: je teksten, prompts, instructies, vertalingen, documentinhoud, bestandsnamen of -paden, API-sleutels, modellen, URL's of eindpunten, klembordinhoud of onbewerkte fouten.",
+      'No persistent user, device, host, or installation identifier is created.':
+          'Er wordt geen permanente gebruikers-, apparaat-, host- of installatie-id aangemaakt.',
+      'Allow': 'Toestaan',
+      "Don't allow": 'Niet toestaan',
+      'Later': 'Later',
+      'Anonymous usage data': 'Anonieme gebruiksgegevens',
+      'Allow AbyssL to send anonymous usage data':
+          'AbyssL toestaan anonieme gebruiksgegevens te verzenden',
+      'Not decided. You will be asked again next time AbyssL starts.':
+          'Nog niet besloten. De volgende keer dat AbyssL wordt gestart, wordt dit opnieuw gevraagd.',
+      'Analytics are enabled.': 'Gegevensanalyse is ingeschakeld.',
+      'Analytics are disabled.': 'Gegevensanalyse is uitgeschakeld.',
       'System default': 'Systeemstandaard',
       'Translate': 'Vertalen',
       'Correction': 'Correctie',
@@ -1277,6 +1423,31 @@ class AbyssLAppLocalizations {
       'Local OpenAI-compatible': 'Lokaal OpenAI-compatibel',
     },
     'hr': {
+      'Privacy': 'Privatnost',
+      'Share anonymous usage data?':
+          'Želite li dijeliti anonimne podatke o korištenju?',
+      'Help improve AbyssL by sharing anonymous usage data.':
+          'Pomozite poboljšati AbyssL dijeljenjem anonimnih podataka o korištenju.',
+      'Aptabase stores the data in the European Union.':
+          'Aptabase pohranjuje podatke u Europskoj uniji.',
+      'Collected: operating system and app version, system and app language, used feature, provider category, duration and outcome, language pair, style choices, and coarse document formats, options, and counts.':
+          'Prikuplja se: operacijski sustav i verzija aplikacije, jezik sustava i aplikacije, korištena značajka, kategorija pružatelja, trajanje i ishod, jezični par, odabiri stila te grubi formati, opcije i brojevi dokumenata.',
+      'When offline, unsent events are stored locally for less than 24 hours. Turning analytics off deletes them.':
+          'Bez internetske veze neposlani se događaji lokalno čuvaju kraće od 24 sata. Isključivanjem analitike brišu se.',
+      'Never collected: your texts, prompts, instructions, translations, document contents, file names or paths, API keys, models, URLs or endpoints, clipboard contents, or raw errors.':
+          'Nikad se ne prikuplja: vaši tekstovi, promptovi, upute, prijevodi, sadržaji dokumenata, nazivi ili putanje datoteka, API ključevi, modeli, URL-ovi ili krajnje točke, sadržaj međuspremnika ni neobrađene pogreške.',
+      'No persistent user, device, host, or installation identifier is created.':
+          'Ne stvara se trajni identifikator korisnika, uređaja, računala ili instalacije.',
+      'Allow': 'Dopusti',
+      "Don't allow": 'Nemoj dopustiti',
+      'Later': 'Kasnije',
+      'Anonymous usage data': 'Anonimni podaci o korištenju',
+      'Allow AbyssL to send anonymous usage data':
+          'Dopusti aplikaciji AbyssL slanje anonimnih podataka o korištenju',
+      'Not decided. You will be asked again next time AbyssL starts.':
+          'Još nije odlučeno. Ponovno ćete biti pitani pri sljedećem pokretanju aplikacije AbyssL.',
+      'Analytics are enabled.': 'Analitika je omogućena.',
+      'Analytics are disabled.': 'Analitika je onemogućena.',
       'System default': 'Zadano sustavom',
       'Translate': 'Prevedi',
       'Correction': 'Ispravak',

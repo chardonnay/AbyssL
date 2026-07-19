@@ -999,7 +999,7 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('nav-settings')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('settings-section-2')));
+    await tester.tap(find.byKey(const ValueKey('settings-section-3')));
     await tester.pumpAndSettle();
 
     expect(
