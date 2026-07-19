@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
@@ -8,6 +9,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 
 import 'src/abyssl_design.dart';
+import 'src/analytics.dart';
 import 'src/app_localizations.dart';
 import 'src/app_update.dart';
 import 'src/document_processing.dart';
@@ -19,7 +21,15 @@ import 'src/settings_store.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final settings = await AppSettingsStore.load();
-  runApp(AbyssLApp(settings: settings));
+  AnalyticsService analytics;
+  try {
+    analytics = await AptabaseAnalyticsService.create(
+      consent: settings.analyticsConsent,
+    );
+  } on Object {
+    analytics = const NoOpAnalyticsService();
+  }
+  runApp(AbyssLApp(settings: settings, analyticsService: analytics));
 }
 
 /// Translates the static desktop UI copy while preserving Material's familiar
@@ -83,11 +93,13 @@ class AbyssLApp extends StatelessWidget {
     required this.settings,
     this.apiClient,
     this.updateService,
+    this.analyticsService,
   });
 
   final AppSettingsStore settings;
   final AbyssLApiClient? apiClient;
   final AppUpdateService? updateService;
+  final AnalyticsService? analyticsService;
 
   @override
   Widget build(BuildContext context) {
@@ -123,6 +135,7 @@ class AbyssLApp extends StatelessWidget {
           settings: settings,
           apiClient: apiClient,
           updateService: updateService,
+          analyticsService: analyticsService,
         ),
       ),
     );
@@ -305,23 +318,49 @@ class ResultChipPanel extends StatelessWidget {
   }
 }
 
+typedef _AnalyticsPropertiesBuilder = Map<String, Object> Function();
+
+class _TrackedOperation {
+  const _TrackedOperation({
+    required this.feature,
+    required this.operation,
+    required this.trigger,
+    required this.provider,
+    required this.appLanguageResolved,
+    this.sourceLanguage,
+    this.targetLanguage,
+    this.successProperties,
+  });
+
+  final AnalyticsFeature feature;
+  final AnalyticsOperation operation;
+  final AnalyticsTrigger trigger;
+  final String provider;
+  final String appLanguageResolved;
+  final String? sourceLanguage;
+  final String? targetLanguage;
+  final _AnalyticsPropertiesBuilder? successProperties;
+}
+
 class MainShell extends StatefulWidget {
   const MainShell({
     super.key,
     required this.settings,
     this.apiClient,
     this.updateService,
+    this.analyticsService,
   });
 
   final AppSettingsStore settings;
   final AbyssLApiClient? apiClient;
   final AppUpdateService? updateService;
+  final AnalyticsService? analyticsService;
 
   @override
   State<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
+class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   final _documentService = const DocumentProcessingService();
   final _captureService = DesktopCaptureService();
   final _commandController = TextEditingController();
@@ -340,6 +379,9 @@ class _MainShellState extends State<MainShell> {
   StreamSubscription<String>? _captureSubscription;
   late final AbyssLApiClient _apiClient;
   late final bool _ownsApiClient;
+  var _analyticsStartupHandled = false;
+  var _consentPromptScheduled = false;
+  var _appStartedTracked = false;
 
   var _selectedIndex = 0;
   var _isBusy = false;
@@ -366,6 +408,7 @@ class _MainShellState extends State<MainShell> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _apiClient = widget.apiClient ?? AbyssLApiClient();
     _ownsApiClient = widget.apiClient == null;
     _captureSubscription = _captureService.capturedText.listen((text) {
@@ -374,7 +417,7 @@ class _MainShellState extends State<MainShell> {
         _sourceController.text = text;
       });
       if (widget.settings.autoTranslateEnabled) {
-        unawaited(_translateNow());
+        unawaited(_translateNow(trigger: AnalyticsTrigger.capture));
       }
     });
     unawaited(_configureCapture());
@@ -382,7 +425,144 @@ class _MainShellState extends State<MainShell> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      final analytics = widget.analyticsService;
+      if (analytics != null) {
+        unawaited(analytics.onAppResumed().catchError((Object _) {}));
+      }
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (widget.analyticsService == null || _analyticsStartupHandled) return;
+    _analyticsStartupHandled = true;
+    if (widget.settings.analyticsConsent == AnalyticsConsent.granted) {
+      _trackAppStarted();
+    } else if (widget.settings.analyticsConsent == AnalyticsConsent.undecided &&
+        !_consentPromptScheduled) {
+      _consentPromptScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_showAnalyticsConsentDialog());
+      });
+    }
+  }
+
+  Future<void> _showAnalyticsConsentDialog() async {
+    final decision = await showDialog<AnalyticsConsent>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        key: const ValueKey('analytics-consent-dialog'),
+        icon: const Icon(Icons.privacy_tip_outlined),
+        title: const Text('Share anonymous usage data?'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Help improve AbyssL by sharing anonymous usage data.'),
+                SizedBox(height: 12),
+                Text('Aptabase stores the data in the European Union.'),
+                SizedBox(height: 12),
+                Text(
+                  'Collected: operating system and app version, system and app language, used feature, provider category, duration and outcome, language pair, style choices, and coarse document formats, options, and counts.',
+                ),
+                SizedBox(height: 12),
+                Text(
+                  'When offline, unsent events are stored locally for less than 24 hours. Turning analytics off deletes them.',
+                ),
+                SizedBox(height: 12),
+                Text(
+                  'Never collected: your texts, prompts, instructions, translations, document contents, file names or paths, API keys, models, URLs or endpoints, clipboard contents, or raw errors.',
+                ),
+                SizedBox(height: 12),
+                Text(
+                  'No persistent user, device, host, or installation identifier is created.',
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            key: const ValueKey('analytics-consent-later'),
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Later'),
+          ),
+          TextButton(
+            key: const ValueKey('analytics-consent-deny'),
+            onPressed: () => Navigator.of(context).pop(AnalyticsConsent.denied),
+            child: const Text("Don't allow"),
+          ),
+          FilledButton(
+            key: const ValueKey('analytics-consent-allow'),
+            onPressed: () =>
+                Navigator.of(context).pop(AnalyticsConsent.granted),
+            child: const Text('Allow'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || decision == null) return;
+
+    final previous = widget.settings.analyticsConsent;
+    widget.settings.update((settings) => settings.analyticsConsent = decision);
+    try {
+      await widget.settings.saveAnalyticsConsent();
+    } catch (error) {
+      widget.settings.update(
+        (settings) => settings.analyticsConsent = previous,
+      );
+      if (mounted) {
+        setState(() => _status = '$error');
+      }
+      return;
+    }
+    try {
+      await widget.analyticsService?.setConsent(decision);
+    } on Object {
+      // Analytics must never interfere with normal application behavior.
+    }
+    if (mounted && decision == AnalyticsConsent.granted) {
+      _trackAppStarted();
+    }
+  }
+
+  void _trackAppStarted() {
+    if (_appStartedTracked ||
+        widget.analyticsService == null ||
+        widget.settings.analyticsConsent != AnalyticsConsent.granted) {
+      return;
+    }
+    _appStartedTracked = true;
+    _trackEvent('app_started', {
+      'app_language_setting': widget.settings.appLanguage.name,
+      'app_language_resolved': _resolvedAppLanguage,
+      'default_provider': _providerCategory,
+      'analytics_schema': 1,
+    });
+  }
+
+  String get _resolvedAppLanguage =>
+      Localizations.localeOf(context).languageCode;
+
+  void _trackEvent(String eventName, Map<String, Object> properties) {
+    final analytics = widget.analyticsService;
+    if (analytics == null ||
+        widget.settings.analyticsConsent != AnalyticsConsent.granted) {
+      return;
+    }
+    unawaited(analytics.trackEvent(eventName, properties).catchError((_) {}));
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _autoTranslateTimer?.cancel();
     _captureSubscription?.cancel();
     _captureService.dispose();
@@ -400,6 +580,10 @@ class _MainShellState extends State<MainShell> {
     _alternativesInstructionController.dispose();
     _documentInstructionController.dispose();
     _synonymsScrollController.dispose();
+    final analytics = widget.analyticsService;
+    if (analytics != null) {
+      unawaited(analytics.dispose().catchError((Object _) {}));
+    }
     super.dispose();
   }
 
@@ -518,8 +702,35 @@ class _MainShellState extends State<MainShell> {
 
   ProviderRequestConfig _requestConfig() => widget.settings.requestConfig();
 
-  Future<void> _runBusy(Future<void> Function() action) async {
+  _TrackedOperation _analyticsOperation({
+    required AnalyticsFeature feature,
+    required AnalyticsOperation operation,
+    required AnalyticsTrigger trigger,
+    _AnalyticsPropertiesBuilder? successProperties,
+  }) {
+    final isTranslation = feature == AnalyticsFeature.translation;
+    return _TrackedOperation(
+      feature: feature,
+      operation: operation,
+      trigger: trigger,
+      provider: _providerCategory,
+      appLanguageResolved: _resolvedAppLanguage,
+      sourceLanguage: isTranslation
+          ? widget.settings.sourceLanguage.localeTag
+          : null,
+      targetLanguage: isTranslation
+          ? widget.settings.targetLanguage.localeTag
+          : null,
+      successProperties: successProperties,
+    );
+  }
+
+  Future<void> _runBusy(
+    Future<void> Function() action, {
+    _TrackedOperation? analytics,
+  }) async {
     if (_isBusy) return;
+    final stopwatch = Stopwatch()..start();
     setState(() {
       _apiClient.resetCancellation();
       _cancelRequested = false;
@@ -528,15 +739,55 @@ class _MainShellState extends State<MainShell> {
     });
     try {
       await action();
+      if (analytics != null) {
+        if (_cancelRequested) {
+          _trackOperationSafely(
+            AnalyticsResult.cancelled,
+            analytics,
+            stopwatch.elapsedMilliseconds,
+          );
+        } else {
+          _trackOperationSafely(
+            AnalyticsResult.completed,
+            analytics,
+            stopwatch.elapsedMilliseconds,
+            analytics.successProperties,
+          );
+        }
+      }
     } on AbyssLRequestCancelledException {
+      if (analytics != null) {
+        _trackOperationSafely(
+          AnalyticsResult.cancelled,
+          analytics,
+          stopwatch.elapsedMilliseconds,
+        );
+      }
       setState(() => _status = _t('Request cancelled.'));
     } catch (error) {
+      if (analytics != null) {
+        if (_cancelRequested) {
+          _trackOperationSafely(
+            AnalyticsResult.cancelled,
+            analytics,
+            stopwatch.elapsedMilliseconds,
+          );
+        } else {
+          _trackOperationSafely(
+            AnalyticsResult.failed,
+            analytics,
+            stopwatch.elapsedMilliseconds,
+            () => {'failure_category': _failureCategory(error).analyticsValue},
+          );
+        }
+      }
       setState(
         () => _status = _cancelRequested
             ? _t('Request cancelled.')
             : _t('$error'),
       );
     } finally {
+      stopwatch.stop();
       if (mounted) {
         setState(() {
           if (_cancelRequested && _status == _t('Cancelling request…')) {
@@ -548,6 +799,98 @@ class _MainShellState extends State<MainShell> {
         });
       }
     }
+  }
+
+  void _trackOperationSafely(
+    AnalyticsResult result,
+    _TrackedOperation operation,
+    int durationMs, [
+    _AnalyticsPropertiesBuilder? extraProperties,
+  ]) {
+    try {
+      _trackOperation(result, operation, durationMs, extraProperties?.call());
+    } on Object {
+      // Analytics instrumentation must never affect a feature result.
+    }
+  }
+
+  void _trackOperation(
+    AnalyticsResult result,
+    _TrackedOperation operation,
+    int durationMs, [
+    Map<String, Object>? extraProperties,
+  ]) {
+    _trackEvent(result.eventName, {
+      'feature': operation.feature.analyticsValue,
+      'operation': operation.operation.analyticsValue,
+      'trigger': operation.trigger.analyticsValue,
+      'provider': operation.provider,
+      'app_language_resolved': operation.appLanguageResolved,
+      if (operation.sourceLanguage != null &&
+          operation.targetLanguage != null) ...{
+        'source_language': operation.sourceLanguage!,
+        'target_language': operation.targetLanguage!,
+      },
+      'duration_ms': durationMs,
+      ...?extraProperties,
+    });
+  }
+
+  String get _providerCategory {
+    final settings = widget.settings;
+    final provider = settings.selectedProvider;
+    try {
+      final family = switch (provider) {
+        TranslationProvider.openAICompatible =>
+          AnalyticsProviderFamily.openAICompatible,
+        TranslationProvider.anthropicCompatible =>
+          AnalyticsProviderFamily.anthropicCompatible,
+        TranslationProvider.localOpenAICompatible =>
+          AnalyticsProviderFamily.localCompatible,
+      };
+      return classifyAnalyticsProvider(
+        settings.baseUriFor(provider),
+        family,
+      ).analyticsValue;
+    } catch (_) {
+      return switch (provider) {
+        TranslationProvider.openAICompatible => 'openai_compatible_other',
+        TranslationProvider.anthropicCompatible => 'anthropic_compatible_other',
+        TranslationProvider.localOpenAICompatible => 'local_compatible_other',
+      };
+    }
+  }
+
+  AnalyticsFailureCategory _failureCategory(Object error) {
+    if (error is TimeoutException) return AnalyticsFailureCategory.timeout;
+    if (error is SocketException) return AnalyticsFailureCategory.network;
+    if (error is FormatException) return AnalyticsFailureCategory.parsing;
+    if (error is DocumentProcessingException) {
+      return AnalyticsFailureCategory.unknown;
+    }
+    if (error is AbyssLApiException) {
+      final status = error.statusCode;
+      if (status == 401 || status == 403) {
+        return AnalyticsFailureCategory.auth;
+      }
+      if (status == 408) return AnalyticsFailureCategory.timeout;
+      if (status == 429) return AnalyticsFailureCategory.rateLimit;
+      if (status != null && status >= 500) {
+        return AnalyticsFailureCategory.provider5xx;
+      }
+      if (status != null && status >= 400) {
+        return AnalyticsFailureCategory.unknown;
+      }
+      final normalized = error.message.toLowerCase();
+      if (normalized.contains('timed out') || normalized.contains('timeout')) {
+        return AnalyticsFailureCategory.timeout;
+      }
+      if (normalized.contains('json') || normalized.contains('parse')) {
+        return AnalyticsFailureCategory.parsing;
+      }
+      return AnalyticsFailureCategory.unknown;
+    }
+    return AnalyticsFailureCategory.unknown;
   }
 
   void _cancelCurrentRequest() {
@@ -573,7 +916,7 @@ class _MainShellState extends State<MainShell> {
     if (!widget.settings.autoTranslateEnabled) return;
     _autoTranslateTimer = Timer(const Duration(milliseconds: 650), () {
       if (_sourceController.text.trim().isNotEmpty) {
-        unawaited(_translateNow());
+        unawaited(_translateNow(trigger: AnalyticsTrigger.autoTranslate));
       }
     });
   }
@@ -601,18 +944,43 @@ class _MainShellState extends State<MainShell> {
     }
   }
 
-  Future<void> _translateNow() => _runBusy(() async {
-    final result = await _apiClient.translate(
-      text: _sourceController.text,
-      instruction: _instructionController.text,
-      config: _requestConfig(),
+  Future<void> _translateNow({
+    AnalyticsTrigger trigger = AnalyticsTrigger.manual,
+  }) {
+    final settings = widget.settings;
+    final register = settings.styleRegister;
+    final complexity = settings.styleComplexity;
+    final spelling = settings.spellingMode;
+    final styleCustom =
+        register != RegisterStyle.neutral ||
+        complexity != ComplexityStyle.neutral ||
+        spelling != SpellingMode.preserve;
+    return _runBusy(
+      () async {
+        final result = await _apiClient.translate(
+          text: _sourceController.text,
+          instruction: _instructionController.text,
+          config: _requestConfig(),
+        );
+        _translationController.text = result.translation;
+        _synonyms = result.synonyms;
+        _alternatives = [];
+        _alternativesSubject = null;
+        _status = result.spellingNotes ?? '';
+      },
+      analytics: _analyticsOperation(
+        feature: AnalyticsFeature.translation,
+        operation: AnalyticsOperation.translate,
+        trigger: trigger,
+        successProperties: () => {
+          'style_custom': styleCustom ? 1 : 0,
+          'register': register.name,
+          'complexity': complexity.name,
+          'spelling_mode': spelling.name,
+        },
+      ),
     );
-    _translationController.text = result.translation;
-    _synonyms = result.synonyms;
-    _alternatives = [];
-    _alternativesSubject = null;
-    _status = result.spellingNotes ?? '';
-  });
+  }
 
   Future<void> _suggestAlternatives() => _runBusy(() async {
     final selection = _translationController.selection;
@@ -676,29 +1044,56 @@ class _MainShellState extends State<MainShell> {
     });
   }
 
-  Future<void> _correctWriting() => _runBusy(() async {
-    final result = await _apiClient.correctWriting(
-      text: _correctionInputController.text,
-      instruction: _correctionInstructionController.text,
-      config: _requestConfig(),
+  Future<void> _correctWriting({
+    AnalyticsTrigger trigger = AnalyticsTrigger.manual,
+  }) {
+    var issueCount = 0;
+    return _runBusy(
+      () async {
+        final result = await _apiClient.correctWriting(
+          text: _correctionInputController.text,
+          instruction: _correctionInstructionController.text,
+          config: _requestConfig(),
+        );
+        _correctionOutputController.text = result.correctedText;
+        _correctionIssues = result.issues;
+        issueCount = result.issues.length;
+        _applyCorrectionHighlights(result.issues);
+      },
+      analytics: _analyticsOperation(
+        feature: AnalyticsFeature.correction,
+        operation: AnalyticsOperation.correct,
+        trigger: trigger,
+        successProperties: () => {'issue_count': issueCount},
+      ),
     );
-    _correctionOutputController.text = result.correctedText;
-    _correctionIssues = result.issues;
-    _applyCorrectionHighlights(result.issues);
-  });
+  }
 
-  Future<void> _rewriteWriting() => _runBusy(() async {
-    final rewritten = await _apiClient.rewriteWriting(
-      text: _correctionInputController.text,
-      instruction: _correctionInstructionController.text,
-      stylePreset: _rewritePreset,
-      config: _requestConfig(),
+  Future<void> _rewriteWriting({
+    AnalyticsTrigger trigger = AnalyticsTrigger.manual,
+  }) {
+    final preset = _rewritePreset;
+    return _runBusy(
+      () async {
+        final rewritten = await _apiClient.rewriteWriting(
+          text: _correctionInputController.text,
+          instruction: _correctionInstructionController.text,
+          stylePreset: preset,
+          config: _requestConfig(),
+        );
+        _correctionOutputController.text = rewritten;
+        _correctionOutputController.setHighlights(const []);
+        _correctionInputController.setHighlights(const []);
+        _correctionIssues = [];
+      },
+      analytics: _analyticsOperation(
+        feature: AnalyticsFeature.correction,
+        operation: AnalyticsOperation.rewrite,
+        trigger: trigger,
+        successProperties: () => {'rewrite_preset': preset.name},
+      ),
     );
-    _correctionOutputController.text = rewritten;
-    _correctionOutputController.setHighlights(const []);
-    _correctionInputController.setHighlights(const []);
-    _correctionIssues = [];
-  });
+  }
 
   void _applyCorrectionHighlights(List<WritingCorrectionIssue> issues) {
     final colors = Theme.of(context).colorScheme;
@@ -810,45 +1205,123 @@ class _MainShellState extends State<MainShell> {
     });
   }
 
-  Future<void> _processDocuments() => _runBusy(() async {
-    final outputDirectory = _documentOutputDirectory;
-    if (_documentJobs.isEmpty) {
-      throw const DocumentProcessingException(
-        'Add at least one file or folder.',
-      );
-    }
-    if (outputDirectory == null || outputDirectory.trim().isEmpty) {
-      throw const DocumentProcessingException('Choose an output folder.');
-    }
+  Future<void> _processDocuments({
+    AnalyticsTrigger trigger = AnalyticsTrigger.manual,
+  }) {
+    final jobs = List<DocumentJob>.unmodifiable(_documentJobs);
     final options = _documentOptions.copyWith(
       instruction: _documentInstructionController.text,
     );
-    final results = await _documentService.process(
-      jobs: _documentJobs,
-      destinationDirectory: outputDirectory,
-      options: options,
-      configuration: DocumentProcessingConfiguration(
-        requestConfig: _requestConfig(),
-        apiClient: _apiClient,
+    var results = const <DocumentProcessingResult>[];
+    return _runBusy(
+      () async {
+        final outputDirectory = _documentOutputDirectory;
+        if (jobs.isEmpty) {
+          throw const DocumentProcessingException(
+            'Add at least one file or folder.',
+          );
+        }
+        if (outputDirectory == null || outputDirectory.trim().isEmpty) {
+          throw const DocumentProcessingException('Choose an output folder.');
+        }
+        results = await _documentService.process(
+          jobs: jobs,
+          destinationDirectory: outputDirectory,
+          options: options,
+          configuration: DocumentProcessingConfiguration(
+            requestConfig: _requestConfig(),
+            apiClient: _apiClient,
+          ),
+          onProgress: (progress) =>
+              setState(() => _documentProgress = progress),
+        );
+        _documentResults = results;
+      },
+      analytics: _analyticsOperation(
+        feature: AnalyticsFeature.documents,
+        operation: AnalyticsOperation.processDocuments,
+        trigger: trigger,
+        successProperties: () => {
+          'job_count': jobs.length,
+          'success_count': results
+              .where((result) => result.status == DocumentResultStatus.success)
+              .length,
+          'failure_count': results
+              .where((result) => result.status == DocumentResultStatus.failed)
+              .length,
+          'skipped_count': results
+              .where((result) => result.status == DocumentResultStatus.skipped)
+              .length,
+          'input_type': _documentInputFormat(jobs),
+          'export_format': options.exportFormat.fileExtension,
+          'correction_enabled': options.shouldCorrect ? 1 : 0,
+          'translation_enabled': options.shouldTranslate ? 1 : 0,
+        },
       ),
-      onProgress: (progress) => setState(() => _documentProgress = progress),
     );
-    _documentResults = results;
-  });
+  }
+
+  String _documentInputFormat(List<DocumentJob> jobs) {
+    final kinds = jobs.map((job) => job.inputKind.name).toSet();
+    if (kinds.isEmpty) return 'none';
+    return kinds.length == 1 ? kinds.single : 'mixed';
+  }
 
   Future<void> _openSettings() async {
-    await showDialog<void>(
+    final previousConsent = widget.settings.analyticsConsent;
+    final previousProvider = _providerCategory;
+    final previousLanguage = widget.settings.appLanguage.name;
+    final saved = await showDialog<bool>(
       context: context,
       builder: (context) => SettingsDialog(
         settings: widget.settings,
         apiClient: _apiClient,
         updateService: widget.updateService,
         onSaved: () async {
-          await _configureCapture();
-          setState(() {});
+          try {
+            await widget.analyticsService?.setConsent(
+              widget.settings.analyticsConsent,
+            );
+          } on Object {
+            // Persisted consent must not depend on analytics availability.
+          }
+          unawaited(
+            _configureCapture().catchError((Object _) {
+              // Native capture setup is independent of persisted settings.
+            }),
+          );
+          if (mounted) setState(() {});
         },
       ),
     );
+    if (!mounted || saved != true) return;
+
+    final consent = widget.settings.analyticsConsent;
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+
+    if (consent == AnalyticsConsent.granted) {
+      if (previousConsent != AnalyticsConsent.granted) {
+        _trackAppStarted();
+      } else {
+        final provider = _providerCategory;
+        if (provider != previousProvider) {
+          _trackEvent('setting_changed', {
+            'setting': 'default_provider',
+            'from': previousProvider,
+            'to': provider,
+          });
+        }
+        final language = widget.settings.appLanguage.name;
+        if (language != previousLanguage) {
+          _trackEvent('setting_changed', {
+            'setting': 'app_language',
+            'from': previousLanguage,
+            'to': language,
+          });
+        }
+      }
+    }
   }
 
   void _focusCommand() {
@@ -871,18 +1344,18 @@ class _MainShellState extends State<MainShell> {
     if (command.startsWith('translate') || command.startsWith('übersetz')) {
       setState(() => _selectedIndex = 0);
       if (_sourceController.text.trim().isNotEmpty) {
-        unawaited(_translateNow());
+        unawaited(_translateNow(trigger: AnalyticsTrigger.command));
       }
     } else if (command.startsWith('correct') || command.startsWith('korrig')) {
       setState(() => _selectedIndex = 1);
       if (_correctionInputController.text.trim().isNotEmpty) {
-        unawaited(_correctWriting());
+        unawaited(_correctWriting(trigger: AnalyticsTrigger.command));
       }
     } else if (command.startsWith('rewrite') ||
         command.startsWith('umschreib')) {
       setState(() => _selectedIndex = 1);
       if (_correctionInputController.text.trim().isNotEmpty) {
-        unawaited(_rewriteWriting());
+        unawaited(_rewriteWriting(trigger: AnalyticsTrigger.command));
       }
     } else if (command.startsWith('document') ||
         command.startsWith('dokument')) {
@@ -891,7 +1364,7 @@ class _MainShellState extends State<MainShell> {
         command.startsWith('verarbeit')) {
       setState(() => _selectedIndex = 2);
       if (_documentJobs.isNotEmpty && _documentOutputDirectory != null) {
-        unawaited(_processDocuments());
+        unawaited(_processDocuments(trigger: AnalyticsTrigger.command));
       }
     } else {
       setState(
@@ -929,18 +1402,45 @@ class _MainShellState extends State<MainShell> {
 
   String get _styleSummary {
     final settings = widget.settings;
-    final isNeutral =
-        settings.styleRegister == RegisterStyle.neutral &&
-        settings.styleComplexity == ComplexityStyle.neutral &&
-        settings.spellingMode == SpellingMode.preserve;
-    return _t(isNeutral ? 'Neutral' : 'Custom');
+    return _t(_styleIsCustom(settings) ? 'Custom' : 'Neutral');
+  }
+
+  bool _styleIsCustom(AppSettingsStore settings) =>
+      settings.styleRegister != RegisterStyle.neutral ||
+      settings.styleComplexity != ComplexityStyle.neutral ||
+      settings.spellingMode != SpellingMode.preserve;
+
+  void _changeTranslationStyle({
+    required AnalyticsStyleDimension dimension,
+    required String from,
+    required String to,
+    required void Function(AppSettingsStore settings) change,
+  }) {
+    if (from == to) return;
+    widget.settings.update(change);
+    _trackEvent('translation_style_changed', {
+      'dimension': dimension.analyticsValue,
+      'from': from,
+      'to': to,
+      'is_custom': _styleIsCustom(widget.settings) ? 1 : 0,
+    });
   }
 
   void _resetStyleSettings() {
+    final settings = widget.settings;
+    if (!_styleIsCustom(settings)) return;
+    final from =
+        '${settings.styleRegister.name}|${settings.styleComplexity.name}|${settings.spellingMode.name}';
     widget.settings.update((settings) {
       settings.styleRegister = RegisterStyle.neutral;
       settings.styleComplexity = ComplexityStyle.neutral;
       settings.spellingMode = SpellingMode.preserve;
+    });
+    _trackEvent('translation_style_changed', {
+      'dimension': AnalyticsStyleDimension.all.analyticsValue,
+      'from': from,
+      'to': 'neutral|neutral|preserve',
+      'is_custom': 0,
     });
   }
 
@@ -1483,8 +1983,11 @@ class _MainShellState extends State<MainShell> {
                       value: widget.settings.styleRegister,
                       values: RegisterStyle.values,
                       text: (value) => value.label,
-                      onChanged: (value) => widget.settings.update(
-                        (settings) => settings.styleRegister = value,
+                      onChanged: (value) => _changeTranslationStyle(
+                        dimension: AnalyticsStyleDimension.register,
+                        from: widget.settings.styleRegister.name,
+                        to: value.name,
+                        change: (settings) => settings.styleRegister = value,
                       ),
                     ),
                   ),
@@ -1496,8 +1999,11 @@ class _MainShellState extends State<MainShell> {
                       value: widget.settings.styleComplexity,
                       values: ComplexityStyle.values,
                       text: (value) => value.label,
-                      onChanged: (value) => widget.settings.update(
-                        (settings) => settings.styleComplexity = value,
+                      onChanged: (value) => _changeTranslationStyle(
+                        dimension: AnalyticsStyleDimension.complexity,
+                        from: widget.settings.styleComplexity.name,
+                        to: value.name,
+                        change: (settings) => settings.styleComplexity = value,
                       ),
                     ),
                   ),
@@ -1515,8 +2021,11 @@ class _MainShellState extends State<MainShell> {
                       value: widget.settings.spellingMode,
                       values: SpellingMode.values,
                       text: (value) => value.label,
-                      onChanged: (value) => widget.settings.update(
-                        (settings) => settings.spellingMode = value,
+                      onChanged: (value) => _changeTranslationStyle(
+                        dimension: AnalyticsStyleDimension.spellingMode,
+                        from: widget.settings.spellingMode.name,
+                        to: value.name,
+                        change: (settings) => settings.spellingMode = value,
                       ),
                     ),
                   ),
@@ -2558,6 +3067,7 @@ class _SettingsDialogSnapshot {
     final selectedProvider = settings.selectedProvider;
     final themeMode = settings.themeMode;
     final appLanguage = settings.appLanguage;
+    final analyticsConsent = settings.analyticsConsent;
     final llmProfiles = List<LLMProfile>.unmodifiable(settings.llmProfiles);
     final selectedLLMProfileID = settings.selectedLLMProfileID;
     final llmReasoningSettings =
@@ -2608,6 +3118,7 @@ class _SettingsDialogSnapshot {
       target.selectedProvider = selectedProvider;
       target.themeMode = themeMode;
       target.appLanguage = appLanguage;
+      target.analyticsConsent = analyticsConsent;
       target.llmProfiles = llmProfiles;
       target.selectedLLMProfileID = selectedLLMProfileID;
       target.llmReasoningSettings = llmReasoningSettings;
@@ -2758,7 +3269,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
       _settingsBaselineRestored = true;
       widget.settings.update(_settingsBaseline.restore);
     }
-    Navigator.of(context).pop();
+    Navigator.of(context).pop(false);
   }
 
   TextEditingController _baseUrlController(TranslationProvider provider) =>
@@ -2800,7 +3311,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
       await settings.save();
       _settingsBaseline = _SettingsDialogSnapshot.capture(settings);
       await widget.onSaved();
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
       if (mounted) setState(() => _message = '$error');
     }
@@ -3104,7 +3615,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
 
   void _selectSettingsSection(int index) {
     setState(() => _settingsSection = index);
-    if (index == 2) {
+    if (index == 3) {
       unawaited(_loadAppBuildInfo());
     }
   }
@@ -3361,6 +3872,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
     const sections = [
       (Icons.tune_outlined, 'General'),
       (Icons.hub_outlined, 'AI Providers'),
+      (Icons.privacy_tip_outlined, 'Privacy'),
       (Icons.info_outline_rounded, 'About'),
     ];
     if (compact) {
@@ -3477,6 +3989,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
         child: switch (_settingsSection) {
           0 => _generalSettings(settings),
           1 => _aiProviderSettings(settings),
+          2 => _privacySettings(settings),
           _ => _aboutSettings(),
         },
       ),
@@ -3616,6 +4129,75 @@ class _SettingsDialogState extends State<SettingsDialog> {
                   decoration: InputDecoration(labelText: _t('Capture key')),
                 ),
               ]),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _privacySettings(AppSettingsStore settings) {
+    final status = switch (settings.analyticsConsent) {
+      AnalyticsConsent.undecided =>
+        'Not decided. You will be asked again next time AbyssL starts.',
+      AnalyticsConsent.granted => 'Analytics are enabled.',
+      AnalyticsConsent.denied => 'Analytics are disabled.',
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _settingsSectionCard(
+          icon: Icons.privacy_tip_outlined,
+          title: 'Anonymous usage data',
+          subtitle: 'Aptabase stores the data in the European Union.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Material(
+                type: MaterialType.transparency,
+                child: SwitchListTile.adaptive(
+                  key: const ValueKey('analytics-consent-switch'),
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    'Allow AbyssL to send anonymous usage data',
+                  ),
+                  subtitle: Text(status),
+                  value: settings.analyticsConsent == AnalyticsConsent.granted,
+                  onChanged: (enabled) => settings.update(
+                    (settings) => settings.analyticsConsent = enabled
+                        ? AnalyticsConsent.granted
+                        : AnalyticsConsent.denied,
+                  ),
+                ),
+              ),
+              if (settings.analyticsConsent == AnalyticsConsent.undecided)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    key: const ValueKey('analytics-consent-settings-deny'),
+                    onPressed: () => settings.update(
+                      (settings) =>
+                          settings.analyticsConsent = AnalyticsConsent.denied,
+                    ),
+                    child: const Text("Don't allow"),
+                  ),
+                ),
+              const SizedBox(height: 14),
+              const Text(
+                'Collected: operating system and app version, system and app language, used feature, provider category, duration and outcome, language pair, style choices, and coarse document formats, options, and counts.',
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'When offline, unsent events are stored locally for less than 24 hours. Turning analytics off deletes them.',
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Never collected: your texts, prompts, instructions, translations, document contents, file names or paths, API keys, models, URLs or endpoints, clipboard contents, or raw errors.',
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'No persistent user, device, host, or installation identifier is created.',
+              ),
             ],
           ),
         ),

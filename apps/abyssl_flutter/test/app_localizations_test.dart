@@ -83,4 +83,43 @@ void main() {
       );
     }
   });
+
+  test('all supported app languages cover analytics consent and privacy', () {
+    const requiredCopy = <String>[
+      'Privacy',
+      'Share anonymous usage data?',
+      'Help improve AbyssL by sharing anonymous usage data.',
+      'Aptabase stores the data in the European Union.',
+      'Collected: operating system and app version, system and app language, used feature, provider category, duration and outcome, language pair, style choices, and coarse document formats, options, and counts.',
+      'When offline, unsent events are stored locally for less than 24 hours. Turning analytics off deletes them.',
+      'Never collected: your texts, prompts, instructions, translations, document contents, file names or paths, API keys, models, URLs or endpoints, clipboard contents, or raw errors.',
+      'No persistent user, device, host, or installation identifier is created.',
+      'Allow',
+      "Don't allow",
+      'Later',
+      'Anonymous usage data',
+      'Allow AbyssL to send anonymous usage data',
+      'Not decided. You will be asked again next time AbyssL starts.',
+      'Analytics are enabled.',
+      'Analytics are disabled.',
+    ];
+
+    final english = AbyssLAppLocalizations(const Locale('en'));
+    for (final key in requiredCopy) {
+      expect(english.text(key), key, reason: 'English fallback changed: $key');
+    }
+
+    for (final locale in AbyssLAppLocalizations.supportedLocales) {
+      if (locale == const Locale('en')) continue;
+      final localizations = AbyssLAppLocalizations(locale);
+      final missing = requiredCopy
+          .where((key) => !localizations.hasTranslation(key))
+          .toList();
+      expect(
+        missing,
+        isEmpty,
+        reason: 'Missing ${locale.languageCode}: $missing',
+      );
+    }
+  });
 }

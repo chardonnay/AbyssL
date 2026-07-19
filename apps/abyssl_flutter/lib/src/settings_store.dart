@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'analytics.dart';
 import 'models.dart';
 import 'openai_client.dart';
 
@@ -33,6 +34,7 @@ class AppSettingsStore extends ChangeNotifier {
   static const _providerKey = 'abyssl.provider';
   static const _themeModeKey = 'abyssl.themeMode';
   static const _appLanguageKey = 'abyssl.appLanguage';
+  static const _analyticsConsentKey = 'abyssl.analyticsConsent';
   static const _localServerHostKey = 'abyssl.local.serverHost';
   static const _localServerPortKey = 'abyssl.local.serverPort';
   static const _localUseHTTPSKey = 'abyssl.local.useHTTPS';
@@ -111,6 +113,7 @@ class AppSettingsStore extends ChangeNotifier {
   TranslationProvider selectedProvider = TranslationProvider.openAICompatible;
   AppThemeMode themeMode = AppThemeMode.system;
   AppLanguage appLanguage = AppLanguage.system;
+  AnalyticsConsent analyticsConsent = AnalyticsConsent.undecided;
   List<LLMProfile> llmProfiles = const [];
   String selectedLLMProfileID = '';
   Map<String, LLMReasoningSettings> llmReasoningSettings = const {};
@@ -325,6 +328,12 @@ class AppSettingsStore extends ChangeNotifier {
           _preferences.getString(_appLanguageKey),
         ) ??
         appLanguage;
+    analyticsConsent =
+        _enumByName(
+          AnalyticsConsent.values,
+          _preferences.getString(_analyticsConsentKey),
+        ) ??
+        AnalyticsConsent.undecided;
     autoTranslateEnabled =
         _preferences.getBool(_autoTranslateKey) ?? autoTranslateEnabled;
     reasoningOnValue = _nonEmpty(
@@ -521,10 +530,17 @@ class AppSettingsStore extends ChangeNotifier {
     } finally {
       notifyListeners();
     }
+    // Consent is committed last so a failed settings save cannot leave the
+    // persisted choice out of sync with the active analytics service.
+    await _preferences.setString(_analyticsConsentKey, analyticsConsent.name);
   }
 
   Future<void> saveAutoTranslateEnabled() async {
     await _preferences.setBool(_autoTranslateKey, autoTranslateEnabled);
+  }
+
+  Future<void> saveAnalyticsConsent() async {
+    await _preferences.setString(_analyticsConsentKey, analyticsConsent.name);
   }
 
   Future<void> _saveProviderPreferences() async {

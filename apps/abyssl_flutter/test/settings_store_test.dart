@@ -1,3 +1,4 @@
+import 'package:abyssl_flutter/src/analytics.dart';
 import 'package:abyssl_flutter/src/models.dart';
 import 'package:abyssl_flutter/src/openai_client.dart';
 import 'package:abyssl_flutter/src/settings_store.dart';
@@ -83,6 +84,72 @@ void main() {
 
     final reloaded = await AppSettingsStore.load(secureStorage: secureStorage);
     expect(reloaded.appLanguage, AppLanguage.croatian);
+  });
+
+  test('defaults missing or invalid analytics consent to undecided', () async {
+    for (final initialValues in <Map<String, Object>>[
+      const {},
+      const {'abyssl.analyticsConsent': 'invalid'},
+    ]) {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.withData(initialValues);
+      SharedPreferences.setMockInitialValues(initialValues);
+
+      final settings = await AppSettingsStore.load(
+        secureStorage: _MemorySecureStorage(),
+      );
+
+      expect(settings.analyticsConsent, AnalyticsConsent.undecided);
+    }
+  });
+
+  for (final consent in [AnalyticsConsent.granted, AnalyticsConsent.denied]) {
+    test(
+      'persists ${consent.name} analytics consent with all settings',
+      () async {
+        SharedPreferencesAsyncPlatform.instance =
+            InMemorySharedPreferencesAsync.empty();
+        SharedPreferences.setMockInitialValues({});
+        final secureStorage = _MemorySecureStorage();
+        final preferences = await SharedPreferencesWithCache.create(
+          cacheOptions: const SharedPreferencesWithCacheOptions(),
+        );
+        final settings = AppSettingsStore(
+          preferences: preferences,
+          secureStorage: secureStorage,
+        )..analyticsConsent = consent;
+
+        await settings.save();
+
+        final reloaded = await AppSettingsStore.load(
+          secureStorage: secureStorage,
+        );
+        expect(reloaded.analyticsConsent, consent);
+      },
+    );
+  }
+
+  test('persists analytics consent independently', () async {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    SharedPreferences.setMockInitialValues({});
+    final secureStorage = _MemorySecureStorage();
+    final preferences = await SharedPreferencesWithCache.create(
+      cacheOptions: const SharedPreferencesWithCacheOptions(),
+    );
+    final settings = AppSettingsStore(
+      preferences: preferences,
+      secureStorage: secureStorage,
+    )..analyticsConsent = AnalyticsConsent.granted;
+
+    await settings.saveAnalyticsConsent();
+
+    expect(
+      preferences.getString('abyssl.analyticsConsent'),
+      AnalyticsConsent.granted.name,
+    );
+    final reloaded = await AppSettingsStore.load(secureStorage: secureStorage);
+    expect(reloaded.analyticsConsent, AnalyticsConsent.granted);
   });
 
   test(
@@ -328,16 +395,20 @@ void main() {
   test(
     'fails saving a non-empty key when secure storage is unavailable',
     () async {
+      const initialValues = {'abyssl.analyticsConsent': 'denied'};
       SharedPreferencesAsyncPlatform.instance =
-          InMemorySharedPreferencesAsync.empty();
-      SharedPreferences.setMockInitialValues({});
+          InMemorySharedPreferencesAsync.withData(initialValues);
+      SharedPreferences.setMockInitialValues(initialValues);
       final preferences = await SharedPreferencesWithCache.create(
         cacheOptions: const SharedPreferencesWithCacheOptions(),
       );
-      final settings = AppSettingsStore(
-        preferences: preferences,
-        secureStorage: _FailingSecureStorage(failWrites: true),
-      )..openAIApiKey = 'must-not-enter-preferences';
+      final settings =
+          AppSettingsStore(
+              preferences: preferences,
+              secureStorage: _FailingSecureStorage(failWrites: true),
+            )
+            ..analyticsConsent = AnalyticsConsent.granted
+            ..openAIApiKey = 'must-not-enter-preferences';
 
       await expectLater(
         settings.save(),
@@ -362,6 +433,10 @@ void main() {
           (key) => preferences.get(key) == 'must-not-enter-preferences',
         ),
         isFalse,
+      );
+      expect(
+        preferences.getString('abyssl.analyticsConsent'),
+        AnalyticsConsent.denied.name,
       );
     },
   );
